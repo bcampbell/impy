@@ -28,21 +28,21 @@ int main( int argc, char* argv[])
         return 1;
     }
 
-    SDL_Window *win = SDL_CreateWindow("Hello World!", 100, 100, 640, 480, SDL_WINDOW_SHOWN);
+    win = SDL_CreateWindow("Hello World!", 100, 100, 640, 480, SDL_WINDOW_SHOWN);
     if (!win) {
         fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
         cleanup();
 	    return 1;
     }
 
-    SDL_Renderer *ren = SDL_CreateRenderer(win, -1, 0); //SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    ren = SDL_CreateRenderer(win, -1, 0); //SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
     if (ren == 0){
         fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
         cleanup();
     	return 1;
     }
 
-    im_Img *img = loadPng(argv[1]);
+    img = loadPng(argv[1]);
     if (img==NULL) {
         fprintf(stderr,"Poop.\n");
         cleanup();
@@ -115,7 +115,7 @@ void show()
     int winw, winh;
     int texw, texh;
     SDL_Rect src, dest;
-/*
+
     SDL_GetWindowSize(win, &winw, &winh);
 
     if (SDL_QueryTexture(tex,NULL,NULL,&texw, &texh) != 0 ) {
@@ -123,14 +123,12 @@ void show()
         return;
     }
 
-    printf("win: %dx%d\n",winw,winh);
-*/
 	SDL_RenderClear(ren);
     dest.w = texw*scale;
     dest.h = texh*scale;
-    dest.x = 0; //(winw-dest.w)/2;
-    dest.y = 0; //(winh-dest.h)/2;
-	SDL_RenderCopy(ren, tex, NULL, NULL);
+    dest.x = (winw-dest.w)/2;
+    dest.y = (winh-dest.h)/2;
+	SDL_RenderCopy(ren, tex, NULL, &dest);
 	SDL_RenderPresent(ren);
     
 }
