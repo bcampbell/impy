@@ -58,11 +58,16 @@ static int bpp(ImFmt fmt, ImDatatype datatype) {
 }
 
 
-im_Img* im_img_new(int w, int h, ImFmt fmt, ImDatatype datatype)
+im_Img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
 {
     im_Img* img;
     int bytesPerPixel;
     int datsize;
+
+    if( w<1 || h<1 || d<1 ) {
+        im_err(ERR_BADPARAM);
+        return NULL;
+    }
 
     bytesPerPixel = bpp(fmt,datatype);
     if(bytesPerPixel==0) {
@@ -81,7 +86,7 @@ im_Img* im_img_new(int w, int h, ImFmt fmt, ImDatatype datatype)
 
     img->Width = w;
     img->Height = h;
-    img->Depth = 1;
+    img->Depth = d;
     img->Format = fmt;
     img->Datatype = datatype;
     img->BytesPerPixel = bytesPerPixel;

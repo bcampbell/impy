@@ -1,4 +1,4 @@
-// gcc -ggdb im.c im_png.c main.c `pkg-config libpng sdl2 --libs --cflags`
+// gcc -ggdb im.c im_convert.c im_png.c main.c `pkg-config libpng sdl2 --libs --cflags`
 
 #include "im.h"
 #include <stdio.h>

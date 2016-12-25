@@ -3,7 +3,7 @@
 
 // image formats
 typedef enum ImFmt {
-    FMT_RGB,
+    FMT_RGB=0,
     FMT_RGBA,
     FMT_BGR,
     FMT_BGRA,
@@ -33,7 +33,8 @@ typedef enum ImErr {
     ERR_BADPARAM,
     ERR_COULDNTOPEN,
     ERR_MALFORMED,      // data looks borked
-    ERR_UNSUPPORTED     // file has stuff we don't (yet) support
+    ERR_UNSUPPORTED,     // file has stuff we don't (yet) support
+    ERR_NOCONV          // unsupported pixel conversion (eg rgb->indexed)
 } ImErr;
 
 
@@ -66,9 +67,11 @@ typedef struct im_Img {
 
 
 // creates a new image (no palette, even if indexed)
-im_Img* im_img_new( int w, int h, ImFmt fmt, ImDatatype datatype );
+im_Img* im_img_new( int w, int h, int d, ImFmt fmt, ImDatatype datatype );
 void im_img_free(im_Img *img);
 void* im_img_row(im_Img *img, int row);
+
+im_Img* im_img_convert( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
 im_Pal* im_pal_new( int numColours );
 void im_pal_free( im_Pal* pal );

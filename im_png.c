@@ -181,7 +181,7 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
             png_error(png_ptr, "unsupported color type");
         }
         
-        cbDat->image = im_img_new(width,height,fmt, dt);
+        cbDat->image = im_img_new(width,height,1,fmt,dt);
         if (cbDat->image == NULL) {
             png_error(png_ptr, "im_img_new() failed");
         }
