@@ -60,8 +60,9 @@ int main( int argc, char* argv[])
 
 
     // bmp shares the pixel data (it doesn't take it's own copy)
+    // little-endian assumption...
     bmp = SDL_CreateRGBSurfaceFrom(img->Data,
-            img->Width, img->Height, 24, img->Pitch, 0xff0000,0x00ff00,0x0000ff,0);
+            img->Width, img->Height, 24, img->Pitch, 0x0000ff,0x00ff00,0xff0000,0);
     if (!bmp) {
         fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
         cleanup();
