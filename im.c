@@ -125,13 +125,14 @@ im_Pal* im_pal_new( int numColours )
         im_err(ERR_NOMEM);
         return NULL;
     }
-
+    pal->NumColours = numColours;
     pal->Data = imalloc(numColours * 4);
     if (!pal->Data) {
         ifree(pal);
         im_err(ERR_NOMEM);
         return NULL;
     }
+    return pal;
 }
 
 void im_pal_free( im_Pal* pal )

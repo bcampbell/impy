@@ -42,20 +42,22 @@ int main( int argc, char* argv[])
     	return 1;
     }
 
-    img = loadPng(argv[1]);
+    im_Img* img2 = loadPng(argv[1]);
+    if (img2==NULL) {
+        fprintf(stderr,"Poop.\n");
+        cleanup();
+        return 1;
+    }
+
+    img = im_img_convert(img2, FMT_RGB, DT_U8);
+    im_img_free(img2);
     if (img==NULL) {
         fprintf(stderr,"Poop.\n");
         cleanup();
         return 1;
     }
 
-/*    SDL_Surface *bmp = SDL_LoadBMP(imagePath.c_str());
-    if (bmp == nullptr){
-        fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
-        cleanup();
-        return 1;
-    }
-*/
+
 
     // bmp shares the pixel data (it doesn't take it's own copy)
     bmp = SDL_CreateRGBSurfaceFrom(img->Data,

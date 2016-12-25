@@ -185,6 +185,49 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
         if (cbDat->image == NULL) {
             png_error(png_ptr, "im_img_new() failed");
         }
+
+        // if there's a palette, install it
+        {
+
+            png_colorp colours;
+            int num_colours;
+            int i;
+            if (png_get_PLTE(png_ptr, info_ptr, &colours, &num_colours) == PNG_INFO_PLTE) {
+                // there is a palette
+                // png palettes are RGB only, so if there is a tRNS chunk, we'll
+                // use it to provide alpha values
+                im_Pal *pal;
+                uint8_t* colp;
+                png_bytep trans = NULL;
+                int  num_trans;
+                
+                // alloc our palette
+                pal = im_pal_new(num_colours);
+                if (!pal) {
+                    png_error(png_ptr, "im_pal_new() failed");
+                }
+                cbDat->image->Palette = pal;
+                
+                // get any tRNS data
+                if (png_get_tRNS(png_ptr, info_ptr, &trans, &num_trans, NULL) == PNG_INFO_tRNS) {
+                } else {
+                    num_trans = 0;
+                }
+
+                //
+                colp = pal->Data;
+                for (i = 0; i < num_colours; ++i) {
+                    *colp++ = colours[i].red;
+                    *colp++ = colours[i].green;
+                    *colp++ = colours[i].blue;
+                    if (i<num_trans) {
+                        *colp++ = trans[i];
+                    } else {
+                        *colp++ = 255;
+                    }
+                }
+            }
+        }
     }
     
 

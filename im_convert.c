@@ -101,8 +101,8 @@ static im_Img* convert_indexed( const im_Img* srcImg, ImFmt destFmt, ImDatatype 
     destImg = im_img_new(srcImg->Width, srcImg->Height, srcImg->Depth,  destFmt, destDatatype);
     if (destImg) {
         int d,y;
-        const uint8_t* srcLine = srcImg->Data + (y*srcImg->Pitch);
-        uint8_t* destLine = destImg->Data + (y*destImg->Pitch);
+        const uint8_t* srcLine = srcImg->Data;
+        uint8_t* destLine = destImg->Data;
         for (d=0; d<srcImg->Depth; ++d) {
             for (y=0; y<srcImg->Height; ++y) {
                 fn( srcLine, destLine, srcImg->Width, srcImg->Palette);
@@ -261,8 +261,8 @@ static im_Img* convert_direct( const im_Img* srcImg, ImFmt destFmt, ImDatatype d
     destImg = im_img_new(srcImg->Width, srcImg->Height, srcImg->Depth,  destFmt, destDatatype);
     if (destImg) {
         int d,y;
-        const uint8_t* srcLine = srcImg->Data + (y*srcImg->Pitch);
-        uint8_t* destLine = destImg->Data + (y*destImg->Pitch);
+        const uint8_t* srcLine = srcImg->Data;
+        uint8_t* destLine = destImg->Data;
         for (d=0; d<srcImg->Depth; ++d) {
             for (y=0; y<srcImg->Height; ++y) {
                 fn( srcLine, destLine, srcImg->Width);

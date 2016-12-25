@@ -41,7 +41,7 @@ typedef enum ImErr {
 
 typedef struct im_Pal {
     void* Data;
-    // TODO: palette format
+    // TODO: palette format - assume RGB[AX] for now
     int NumColours;
 } im_Pal;
 
