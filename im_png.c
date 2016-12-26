@@ -3,16 +3,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-/*
-static readFunc(png_structp png_ptr, png_bytep data, png_size_t length)
-{
-    FILE* fp = (FILE*)png_get_io_ptr(png_ptr);
-    size_t n = fread(data, 1,length,fp);
-    if (n != length) {
-        png_error(png_ptr, "expected more data" );
-    }
-}
-*/
 
 static void info_callback(png_structp png_ptr, png_infop info_ptr);
 static void row_callback(png_structp png_ptr, png_bytep new_row, png_uint_32 row_num, int pass);
@@ -247,6 +237,5 @@ static void row_callback(png_structp png_ptr, png_bytep new_row,
 
 static void end_callback(png_structp png_ptr, png_infop info)
 {
-    // TODO: handle palette here?
 }
 
