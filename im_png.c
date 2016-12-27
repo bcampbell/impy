@@ -9,7 +9,7 @@ static void row_callback(png_structp png_ptr, png_bytep new_row, png_uint_32 row
 static void end_callback(png_structp png_ptr, png_infop info);
 
 
-//
+// struct to track stuff needed during png progressive reading
 struct cbdat {
     int num_passes;
     im_Img* image;
