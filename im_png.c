@@ -22,9 +22,8 @@ im_Img* loadPng(const char* fileName)
 
     //uint8_t cookieBuf[8] = {0};
     //size_t cookieRead;
-    FILE *fp = fopen(fileName, "rb");
-    if (!fp) {
-        im_err(ERR_COULDNTOPEN);
+    im_reader* rdr = im_open_file_reader(fileName);
+    if (!rdr) {
         return NULL;
     }
 /*
@@ -79,17 +78,19 @@ im_Img* loadPng(const char* fileName)
     // libpng with png_process_data()
     png_set_progressive_read_fn(png_ptr, (void*)&cbDat, info_callback, row_callback, end_callback);
 
-    while(!feof(fp)) {
+    while(1) {
         uint8_t buf[4096];
 
         size_t n;
-        n = fread(buf,1,sizeof(buf),fp);
+        n = im_read(rdr, buf, sizeof(buf));
         if (n>0) {
             png_process_data(png_ptr, info_ptr, buf, n);
-        }
-
-        if (ferror(fp)) {
-            fclose(fp);
+        } else {
+            if ( im_eof(rdr) ) {
+                break;
+            }
+            // an error has occurred
+            im_close_reader(rdr);
             png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
             if (cbDat.image) {
                im_img_free(cbDat.image);
@@ -99,7 +100,7 @@ im_Img* loadPng(const char* fileName)
     }
 
     // success - clean up and exit
-    fclose(fp);
+    im_close_reader(rdr);
     png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
     return cbDat.image;
 }

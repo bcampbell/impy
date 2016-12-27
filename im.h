@@ -1,6 +1,9 @@
 #ifndef IM_H
 #define IM_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 // image formats
 typedef enum ImFmt {
     FMT_RGB=0,
@@ -34,7 +37,8 @@ typedef enum ImErr {
     ERR_COULDNTOPEN,
     ERR_MALFORMED,      // data looks borked
     ERR_UNSUPPORTED,     // file has stuff we don't (yet) support
-    ERR_NOCONV          // unsupported pixel conversion (eg rgb->indexed)
+    ERR_NOCONV,         // unsupported pixel conversion (eg rgb->indexed)
+    ERR_FILE,           // stdlib file error, check errno
 } ImErr;
 
 
@@ -64,22 +68,79 @@ typedef struct im_Img {
     // offset, disposition, frame duration etc....
 } im_Img;
 
+/* IO abstraction - basically follows stdio.h style */
+#define IM_SEEK_SET 0
+#define IM_SEEK_CUR 1
+typedef struct im_reader im_reader;
+
+typedef struct im_reader {
+    size_t (*read)(im_reader*, void* , size_t );
+    int (*seek)(im_reader*, long , int);
+    int (*eof)(im_reader*);
+    int (*close)(im_reader*);
+} im_reader;
+
+
+extern im_reader* im_open_file_reader( const char* filename);
+//extern im_reader* im_open_mem_reader( const void* data, size_t nbytes );
+
+
+
+// im_read reads nbytes from the reader, and returns the actual number read.
+// im_read does not distiguish between EOF and other error conditions, so
+// use im_eof() to check if the end of the data has been hit.
+static inline size_t im_read(im_reader* rdr, void* buf, size_t nbytes)
+    { return rdr->read(rdr, buf, nbytes); }
+
+//
+static inline int im_seek(im_reader* rdr, long pos, int whence)
+    { return  rdr->seek(rdr, pos, whence); }
+
+// im_eof returns non-zero if the reader is out of data
+static inline int im_eof(im_reader* rdr)
+    { return rdr->eof(rdr); }
+
+
+typedef struct im_writer im_writer;
+typedef struct im_writer {
+    size_t (*write)(im_writer*, const void* , size_t);
+    int (*close)(im_writer*);
+} im_writer;
+
+extern im_writer* im_open_file_writer( const char* filename);
+//extern im_writer* im_open_mem_writer( void* buf, size_t buf_size );
+
+extern int im_close_writer(im_writer* w);
+extern int im_close_reader(im_reader* rdr);
+
+static inline im_write( im_writer* w, const void* data, size_t nbytes)
+    { return w->write(w,data,nbytes); }
+
 
 
 // creates a new image (no palette, even if indexed)
-im_Img* im_img_new( int w, int h, int d, ImFmt fmt, ImDatatype datatype );
-void im_img_free(im_Img *img);
-void* im_img_row(im_Img *img, int row);
+extern im_Img* im_img_new( int w, int h, int d, ImFmt fmt, ImDatatype datatype );
+extern void im_img_free(im_Img *img);
+extern void* im_img_row(im_Img *img, int row);
 
-im_Img* im_img_convert( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
+extern im_Img* im_img_convert( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
-im_Pal* im_pal_new( int numColours );
-void im_pal_free( im_Pal* pal );
-
+extern im_Pal* im_pal_new( int numColours );
+extern void im_pal_free( im_Pal* pal );
 
 extern void im_err(ImErr err);
 
+
+
+
 extern im_Img* loadPng(const char* fileName);
+
+
+
+
+// PRIVATE
+extern void* imalloc( size_t size);
+extern void ifree(void* ptr);
 
 #endif // IM_H
 
