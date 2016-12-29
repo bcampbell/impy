@@ -118,15 +118,23 @@ void* im_img_row(im_Img *img, int row)
 
 
 
-im_Pal* im_pal_new( int numColours )
+im_Pal* im_pal_new( ImPalFmt fmt, int numColours )
 {
     im_Pal* pal = imalloc(sizeof(im_Pal));
+    size_t entsize;
     if (!pal) {
         im_err(ERR_NOMEM);
         return NULL;
     }
+    pal->Format = fmt;
     pal->NumColours = numColours;
-    pal->Data = imalloc(numColours * 4);
+
+    switch(fmt) {
+        case PALFMT_RGB: entsize = 3; break;
+        case PALFMT_RGBA: entsize = 4; break;
+    }
+
+    pal->Data = imalloc(numColours * entsize);
     if (!pal->Data) {
         ifree(pal);
         im_err(ERR_NOMEM);

@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 // image formats
 typedef enum ImFmt {
@@ -41,10 +42,14 @@ typedef enum ImErr {
     ERR_FILE,           // stdlib file error, check errno
 } ImErr;
 
-
+typedef enum ImPalFmt {
+    PALFMT_RGBA =0,
+    PALFMT_RGB
+} ImPalFmt;
 
 typedef struct im_Pal {
     void* Data;
+    ImPalFmt Format;
     // TODO: palette format - assume RGB[AX] for now
     int NumColours;
 } im_Pal;
@@ -113,7 +118,7 @@ extern im_writer* im_open_file_writer( const char* filename);
 extern int im_close_writer(im_writer* w);
 extern int im_close_reader(im_reader* rdr);
 
-static inline im_write( im_writer* w, const void* data, size_t nbytes)
+static inline size_t im_write( im_writer* w, const void* data, size_t nbytes)
     { return w->write(w,data,nbytes); }
 
 
@@ -125,7 +130,7 @@ extern void* im_img_row(im_Img *img, int row);
 
 extern im_Img* im_img_convert( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
-extern im_Pal* im_pal_new( int numColours );
+extern im_Pal* im_pal_new( ImPalFmt fmt, int numColours );
 extern void im_pal_free( im_Pal* pal );
 
 extern void im_err(ImErr err);
@@ -134,6 +139,7 @@ extern void im_err(ImErr err);
 
 
 extern im_Img* loadPng(const char* fileName);
+extern bool writePng(im_writer* out, im_Img* img);
 
 
 

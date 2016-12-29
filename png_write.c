@@ -2,24 +2,27 @@
 #include <png.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 static void custom_write(png_structp png_ptr,
     png_bytep data, png_size_t length);
 static void custom_flush(png_structp png_ptr);
 
+static bool suss_color_type( ImFmt fmt, int* color_type );
+static bool suss_bit_depth( ImDatatype dt, int *bit_depth);
+
+static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_Pal *pal);
 
 bool writePng( im_writer* out, im_Img* img )
 {
     png_structp png_ptr;
     png_infop info_ptr;
 
-
     png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,NULL,NULL);
     if (!png_ptr) {
         im_err(ERR_NOMEM);
         return false;
     }
-
 
     info_ptr = png_create_info_struct(png_ptr);
     if (!info_ptr)
@@ -49,42 +52,14 @@ bool writePng( im_writer* out, im_Img* img )
         width = img->Width;
         height = img->Height;
 
-        switch (img->Format)
-        {
-            case FMT_RGB:
-            case FMT_BGR:
-                color_type = PNG_COLOR_TYPE_RGB;
-                break;
-            case FMT_RGBA:
-            case FMT_BGRA:
-                color_type = PNG_COLOR_TYPE_RGB_ALPHA;
-                break;
-            case FMT_COLOUR_INDEX:
-                color_type = PNG_COLOR_TYPE_PALETTE;
-                break;
-            case FMT_LUMINANCE:
-                color_type = PNG_COLOR_TYPE_GRAY;
-                break;
-            case FMT_ALPHA:
-                im_err(ERR_UNSUPPORTED);
-                goto bailout;
-                break;
+        if (!suss_color_type(img->Format, &color_type)) {
+            im_err(ERR_UNSUPPORTED);
+            goto bailout;
         }
-        switch (img->Datatype)
-        {
-            case DT_U8: bit_depth=8; break;
-            case DT_U16: bit_depth=16; break;
-            case DT_S8:
-            case DT_S16:
-            case DT_U32:
-            case DT_S32:
-            case DT_FLOAT16:
-            case DT_FLOAT32:
-            case DT_FLOAT64:
-            default:
-                im_err(ERR_UNSUPPORTED);
-                goto bailout;
-                break;
+
+        if (!suss_bit_depth(img->Datatype, &bit_depth)) {
+            im_err(ERR_UNSUPPORTED);
+            goto bailout;
         }
 
 
@@ -95,10 +70,12 @@ bool writePng( im_writer* out, im_Img* img )
             PNG_COMPRESSION_TYPE_DEFAULT,
             PNG_FILTER_TYPE_DEFAULT);
 
-        if (img->Palette) {
-            png_set_PLTE(png_ptr, info_ptr, palette, num_palette);
-            png_set_tRNS(png_ptr, info_ptr, trans, num_trans,
-                                  trans_values);
+        if (img->Format == FMT_COLOUR_INDEX)
+        {
+            if( !plonk_palette( png_ptr, info_ptr, img->Palette) ) {
+                im_err(ERR_UNSUPPORTED);
+                goto bailout;
+            }
         }
 
 
@@ -123,15 +100,107 @@ bool writePng( im_writer* out, im_Img* img )
         png_write_end(png_ptr, info_ptr);
     }
     // success! clean up and exit
-    png_destroy_write_struct(&png_ptr, &info_ptr, NULL);
+    png_destroy_write_struct(&png_ptr, &info_ptr);
     return true;
 
 bailout:
-    png_destroy_write_struct(&png_ptr, &info_ptr, NULL);
+    png_destroy_write_struct(&png_ptr, &info_ptr);
     return false;
 }
 
 
+
+// calculate png colour type PNG_COLOR_whatever
+// return false if unsupported
+static bool suss_color_type( ImFmt fmt, int* color_type )
+{
+    switch (fmt) {
+        case FMT_RGB:
+        case FMT_BGR:
+            *color_type = PNG_COLOR_TYPE_RGB;
+            break;
+        case FMT_RGBA:
+        case FMT_BGRA:
+            *color_type = PNG_COLOR_TYPE_RGB_ALPHA;
+            break;
+        case FMT_COLOUR_INDEX:
+            *color_type = PNG_COLOR_TYPE_PALETTE;
+            break;
+        case FMT_LUMINANCE:
+            *color_type = PNG_COLOR_TYPE_GRAY;
+            break;
+        case FMT_ALPHA:
+            return false;
+    }
+    return true;
+}
+
+// calculate png bit depth (8 or 16)
+// return false if unsupported
+static bool suss_bit_depth( ImDatatype dt, int *bit_depth)
+{
+    switch (dt)
+    {
+        case DT_U8: *bit_depth=8; break;
+        case DT_U16: *bit_depth=16; break;
+        case DT_S8:
+        case DT_S16:
+        case DT_U32:
+        case DT_S32:
+        case DT_FLOAT16:
+        case DT_FLOAT32:
+        case DT_FLOAT64:
+        default:
+            return false;
+    }
+    return true;
+}
+
+
+// return false if anything unsupported or otherwise odd
+static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_Pal *pal)
+{
+    png_color rgb[256];
+    png_byte trans[256];
+    int maxtrans = -1;
+    int i;
+
+    if(!pal) {
+        return false;
+    }
+
+    if (pal->NumColours>256) {
+        return false;
+    }
+
+    if (pal->Format == PALFMT_RGB) {
+        uint8_t *src = pal->Data;
+        for ( i=0; i<pal->NumColours; ++i ) {
+            rgb[i].red = *src++;
+            rgb[i].green = *src++;
+            rgb[i].blue = *src++;
+        }
+    } else if (pal->Format == PALFMT_RGBA) {
+        uint8_t *src = pal->Data;
+        for ( i=0; i<pal->NumColours; ++i ) {
+            rgb[i].red = *src++;
+            rgb[i].green = *src++;
+            rgb[i].blue = *src++;
+            trans[i] = *src++;
+            if( trans[i]!=255) {
+                maxtrans=i;
+            }
+        }
+    } else {
+        return false;
+    }
+
+    png_set_PLTE(png_ptr, info_ptr, rgb, pal->NumColours);
+    if (maxtrans!=-1) {
+        png_set_tRNS(png_ptr, info_ptr, trans, maxtrans+1, NULL);
+    }
+    return true;
+}
 
 static void custom_write(png_structp png_ptr,
     png_bytep data, png_size_t length)
@@ -145,5 +214,6 @@ static void custom_write(png_structp png_ptr,
 
 static void custom_flush(png_structp png_ptr)
 {
+    // TODO
 }
 
