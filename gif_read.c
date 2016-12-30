@@ -110,22 +110,35 @@ static bool read_image( GifFileType* gif )
 static bool read_extension( GifFileType* gif )
 {
     GifByteType* buf;
-    int code;
+    int ext_code;
 
-    if (DGifGetExtension(gif, &code, &buf) != GIF_OK) {
+    if (DGifGetExtension(gif, &ext_code, &buf) != GIF_OK) {
         return false;
     }
-    printf("ext (%d)\n",code);
+
+    if (ext_code==GRAPHICS_EXT_FUNC_CODE) {
+        GraphicsControlBlock gcb;
+        if(DGifExtensionToGCB(buf[0], buf+1, &gcb)!=GIF_OK) {
+            return false;
+        }
+        printf("ext (GCB) disposal=%d delay=%d trans=%d\n",
+                gcb.DisposalMode, gcb.DelayTime, gcb.TransparentColor );
+    } else if (ext_code==APPLICATION_EXT_FUNC_CODE) {
+        printf("ext (0xff - application) %d bytes: '%c%c%c%c%c%c%c%c'\n",
+             buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8]);
+    } else {
+        printf("ext (0x%02x)\n",ext_code);
+    }
 
     while (1) {
         if (DGifGetExtensionNext(gif,&buf) != GIF_OK) {
             return false;
         }
         if (buf==NULL) {
-        printf("  endext\n");
+            printf("  endext\n");
             break;
         }
-        printf("  extnext\n");
+        printf("  extnext (%d bytes)\n", buf[0]);
     }
     return true;
 }
