@@ -42,7 +42,7 @@ int main( int argc, char* argv[])
     	return 1;
     }
 
-    im_Img* img2 = loadPng(argv[1]);
+    im_Img* img2 = im_img_load(argv[1]);
     if (img2==NULL) {
         fprintf(stderr,"Poop.\n");
         cleanup();

@@ -149,3 +149,38 @@ void im_pal_free( im_Pal* pal )
     ifree(pal);
 }
 
+
+im_Img* im_img_load( const char* filename)
+{
+    im_reader* rdr = im_open_file_reader(filename);
+    im_Img* img = im_img_read(rdr);
+    im_close_reader(rdr);
+    return img;
+}
+
+im_Img* im_img_read( im_reader* rdr)
+{
+    uint8_t cookie[8];
+    if (im_read(rdr, cookie, sizeof(cookie)) != sizeof(cookie)) {
+        im_err(ERR_FILE);
+        return NULL;
+    }
+
+    // reset reader
+    if( im_seek(rdr, 0, IM_SEEK_SET) != 0 ) {
+        im_err(ERR_FILE);
+        return NULL;
+    }
+
+    if (isPng(cookie,sizeof(cookie))) {
+        return readPng(rdr);
+    }
+
+    if (isGif(cookie,sizeof(cookie))) {
+        return readGif(rdr);
+    }
+
+    im_err(ERR_UNKNOWN_FILE_TYPE);
+    return NULL;
+}
+

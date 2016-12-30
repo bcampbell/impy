@@ -18,14 +18,27 @@ struct cbdat {
 
 im_Img* loadPng(const char* fileName)
 {
-    struct cbdat cbDat = {0};
-
-    //uint8_t cookieBuf[8] = {0};
-    //size_t cookieRead;
+    im_Img *img;
     im_reader* rdr = im_open_file_reader(fileName);
     if (!rdr) {
         return NULL;
     }
+    img = readPng(rdr);
+    im_close_reader(rdr);
+    return img;
+}
+
+
+bool isPng(const uint8_t* buf, int nbytes)
+{
+    if( png_sig_cmp((png_bytep)buf,0,nbytes) == 0 ) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+
 /*
     cookieRead = fread(cookieBuf, 1, sizeof(cookieBuf), fp);
     if (cookieRead<sizeof(cookieBuf)) {
@@ -41,6 +54,9 @@ im_Img* loadPng(const char* fileName)
     }
 */
 
+im_Img* readPng(im_reader* rdr)
+{
+    struct cbdat cbDat = {0};
     png_structp png_ptr;
     png_infop info_ptr;
 
@@ -90,7 +106,6 @@ im_Img* loadPng(const char* fileName)
                 break;
             }
             // an error has occurred
-            im_close_reader(rdr);
             png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
             if (cbDat.image) {
                im_img_free(cbDat.image);
@@ -100,7 +115,6 @@ im_Img* loadPng(const char* fileName)
     }
 
     // success - clean up and exit
-    im_close_reader(rdr);
     png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
     return cbDat.image;
 }

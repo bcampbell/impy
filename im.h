@@ -40,6 +40,7 @@ typedef enum ImErr {
     ERR_UNSUPPORTED,     // file has stuff we don't (yet) support
     ERR_NOCONV,         // unsupported pixel conversion (eg rgb->indexed)
     ERR_FILE,           // stdlib file error, check errno
+    ERR_UNKNOWN_FILE_TYPE,
 } ImErr;
 
 typedef enum ImPalFmt {
@@ -137,10 +138,17 @@ extern void im_err(ImErr err);
 
 
 
+extern im_Img* im_img_load( const char* filename);
+extern im_Img* im_img_read( im_reader* rdr);
 
+extern bool isPng(const uint8_t* buf, int nbytes);
+extern im_Img* readPng(im_reader* rdr);
 extern im_Img* loadPng(const char* fileName);
+
+extern bool isGif(const uint8_t* buf, int nbytes);
 extern bool writePng(im_writer* out, im_Img* img);
 
+extern im_Img* readGif(im_reader* rdr);
 
 
 

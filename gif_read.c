@@ -26,7 +26,20 @@ static ImErr translate_err( int gif_err_code )
     }
 }
 
-void readGif( im_reader* rdr )
+bool isGif(const uint8_t* buf, int nbytes)
+{
+    //assert nbytes >= 6
+    const char* p = (const char*)buf;
+    return (
+        p[0]=='G' &&
+        p[1]=='I' &&
+        p[2]=='F' &&
+        p[3]=='8' &&
+        (p[4]=='7' || p[4]=='9') &&
+        p[5] == 'a');
+}
+
+im_Img* readGif( im_reader* rdr )
 {
     GifFileType* gif;
     int err;
@@ -35,16 +48,16 @@ void readGif( im_reader* rdr )
     gif = DGifOpen( (void*)rdr, input_fn, &err);
     if (!gif) {
         im_err(translate_err(err));
-        return;
+        return NULL;
     }
 
-    while(done) {
-        bool done=false;
+    while(!done) {
         GifRecordType rec_type;
         if (DGifGetRecordType(gif, &rec_type) == GIF_OK) {
             switch(rec_type) {
                 case UNDEFINED_RECORD_TYPE:
                 case SCREEN_DESC_RECORD_TYPE:
+                    printf("fook\n");
                     im_err(ERR_MALFORMED);
                     done=true;
                     break;
@@ -57,6 +70,7 @@ void readGif( im_reader* rdr )
                     read_extension(gif);
                     break;
                 case TERMINATE_RECORD_TYPE:
+                    printf("TERMINATE_RECORD_TYPE\n");
                     done=true;
                     break;
             }
@@ -65,6 +79,10 @@ void readGif( im_reader* rdr )
             done=true;
         }
     }
+
+    DGifCloseFile(gif);
+    printf("done.\n");
+    return NULL;
 }
 
 
@@ -77,11 +95,10 @@ static bool read_image( GifFileType* gif )
     }
 
     printf("image (%dx%d)\n", gif->Image.Width, gif->Image.Height);
-
     for (y=0; y<gif->Image.Height; ++y) { 
         uint8_t buf[1024];
         //, PixelType *GifLine, int GifLineLen)
-        if (DGifGetLine(gif, buf,sizeof(buf)) != GIF_OK) {
+        if (DGifGetLine(gif, buf,gif->Image.Width) != GIF_OK) {
             return false;
         }
     }
@@ -103,6 +120,7 @@ static bool read_extension( GifFileType* gif )
             return false;
         }
         if (buf==NULL) {
+        printf("  endext\n");
             break;
         }
         printf("  extnext\n");
