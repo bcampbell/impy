@@ -97,11 +97,32 @@ static bool read_image( GifFileType* gif )
     }
 
     printf("image (%dx%d)\n", gif->Image.Width, gif->Image.Height);
-    for (y=0; y<gif->Image.Height; ++y) { 
+
+    if (gif->Image.Interlace) {
         uint8_t buf[1024];
-        //, PixelType *GifLine, int GifLineLen)
-        if (DGifGetLine(gif, buf,gif->Image.Width) != GIF_OK) {
-            return false;
+
+        // GIF interlacing stores the lines in the order:
+        // 0, 8, 16, ...(8n)
+        // 4, 12, ...(8n+4)
+        // 2, 6, 10, 14, ...(4n+2)
+        // 1, 3, 5, 7, 9, ...(2n+1).
+        int offsets[4] = {0,4,2,1};
+        int jumps[4] = {8,8,4,2};
+        int pass;
+        for (pass=0; pass<4; ++pass) {
+            for(y=offsets[pass]; y<gif->Image.Height; y+= jumps[pass]) {
+                if (DGifGetLine(gif, buf, gif->Image.Width) != GIF_OK) {
+                    return false;
+                }
+            }
+        }
+    } else {
+        for (y=0; y<gif->Image.Height; ++y) { 
+            uint8_t buf[1024];
+            //, PixelType *GifLine, int GifLineLen)
+            if (DGifGetLine(gif, buf,gif->Image.Width) != GIF_OK) {
+                return false;
+            }
         }
     }
     return true;
@@ -138,6 +159,7 @@ static bool read_extension( GifFileType* gif )
             printf("  endext\n");
             break;
         }
+        // TODO: collect comment blocks here
         printf("  extnext (%d bytes)\n", buf[0]);
     }
     return true;
