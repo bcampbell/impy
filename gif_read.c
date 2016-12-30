@@ -80,8 +80,10 @@ im_Img* readGif( im_reader* rdr )
         }
     }
 
-    DGifCloseFile(gif);
-    printf("done.\n");
+    if(DGifCloseFile(gif, &err)!=GIF_OK) {
+        // TODO: clean up!
+        im_err(translate_err(err));
+    }
     return NULL;
 }
 
