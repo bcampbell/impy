@@ -152,6 +152,20 @@ extern im_Img* readGif(im_reader* rdr);
 
 
 
+/*
+ * Bundle-related stuff
+ */
+
+typedef struct im_bundle im_bundle;
+typedef struct SlotID {
+    int frame,mipmap,layer,face;
+} SlotID;
+
+im_bundle* im_bundle_new();
+void im_bundle_free(im_bundle* bundle);
+bool im_bundle_set(im_bundle* bundle, const SlotID id, im_Img* img);
+im_Img* im_bundle_get(im_bundle* bundle, const SlotID id);
+
 // PRIVATE
 extern void* imalloc( size_t size);
 extern void ifree(void* ptr);
