@@ -15,12 +15,16 @@ struct readstate {
 
     int loop_count; // from NETSCAPE block
     // TODO: record comment blocks
+
+    //
+    im_bundle *bundle;
 };
 
 
 
 static bool read_image(struct readstate *state);
 static bool read_extension(struct readstate *state);
+static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx);
 
 static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 {
@@ -112,15 +116,21 @@ static bool read_image( struct readstate* state )
 {
     GifFileType* gif = state->gif;
     int y;
-
+    int w,h;
+    im_Img *img;
     if (DGifGetImageDesc(gif) != GIF_OK) {
+        // TODO: set error?
         return false;
     }
 
-    printf("image (%dx%d)\n", gif->Image.Width, gif->Image.Height);
+    w = gif->Image.Width;
+    h = gif->Image.Height;
+
+    img = im_img_new(w,h,1,FMT_COLOUR_INDEX, DT_U8);
+    //printf("image (%dx%d)\n", gif->Image.Width, gif->Image.Height);
 
     if (gif->Image.Interlace) {
-        uint8_t buf[1024];
+        uint8_t buf = [1024];
 
         // GIF interlacing stores the lines in the order:
         // 0, 8, 16, ...(8n)
@@ -131,21 +141,39 @@ static bool read_image( struct readstate* state )
         int jumps[4] = {8,8,4,2};
         int pass;
         for (pass=0; pass<4; ++pass) {
-            for(y=offsets[pass]; y<gif->Image.Height; y+= jumps[pass]) {
-                if (DGifGetLine(gif, buf, gif->Image.Width) != GIF_OK) {
+            for(y=offsets[pass]; y<h; y+= jumps[pass]) {
+                uint8_t *dest = im_img_row(img,y);
+                if (DGifGetLine(gif, dest, w) != GIF_OK) {
+                    // TODO: set error?
                     return false;
                 }
             }
         }
     } else {
-        for (y=0; y<gif->Image.Height; ++y) { 
-            uint8_t buf[1024];
-            //, PixelType *GifLine, int GifLineLen)
-            if (DGifGetLine(gif, buf,gif->Image.Width) != GIF_OK) {
+        for (y=0; y<h; ++y) { 
+            uint8_t *dest = im_img_row(img,y);
+            if (DGifGetLine(gif, dest, w) != GIF_OK) {
+                // TODO: set error?
                 return false;
             }
         }
     }
+
+    // TODO: set GCB stuff here - delay, disposition etc
+    //
+    if (gif->Image->ColorMap) {
+        pal = build_palette(gif->Image->ColorMap,-1);
+    } else if (gif->SColorMap) {
+        pal = build_palette(gif->SColorMap,-1);
+    } else {
+        // TODO: it's valid (but bonkers) for gif files to have no palette
+        pal = NULL;
+    }
+
+    if (pal) {
+        img->Palette = pal;
+    }
+
     return true;
 }
 
@@ -187,4 +215,39 @@ static bool read_extension( struct readstate* state )
     }
     return true;
 }
+
+static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx)
+{
+    im_Pal* pal;
+    uint8_t* dest;
+    int i;
+    if (transparent_idx==-1) {
+        pal = im_pal_new( PALFMT_RGB, cm->ColorCount );
+        if( !pal) {
+            return NULL;
+        }
+        dest = pal->Data;
+        for (i=0; i<cm->ColorCount; ++i) {
+            GifColorType *src = cm->Colors[i];
+            *dest++ = src->Red;
+            *dest++ = src->Green;
+            *dest++ = src->Blue;
+        }
+    } else {
+        pal = im_pal_new( PALFMT_RGBA, cm->ColorCount );
+        if( !pal) {
+            return NULL;
+        }
+        dest = pal->Data;
+        for (i=0; i<cm->ColorCount; ++i) {
+            GifColorType *src = cm->Colors[i];
+            *dest++ = src->Red;
+            *dest++ = src->Green;
+            *dest++ = src->Blue;
+            *dest++ = (transparent_idx == i) ? 0 : 255;
+        }
+    }
+    return pal;
+}
+
 
