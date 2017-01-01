@@ -4,10 +4,23 @@
 #include <gif_lib.h>
 
 // TODO: check GIFLIB_MAJOH version >= 5
-//
-//
-static bool read_image( GifFileType* gif );
-static bool read_extension( GifFileType* gif );
+
+
+struct readstate {
+    GifFileType *gif;
+
+    // the currently-active gcb data
+    bool gcb_valid;
+    GraphicsControlBlock gcb;
+
+    int loop_count; // from NETSCAPE block
+    // TODO: record comment blocks
+};
+
+
+
+static bool read_image(struct readstate *state);
+static bool read_extension(struct readstate *state);
 
 static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 {
@@ -41,6 +54,8 @@ bool isGif(const uint8_t* buf, int nbytes)
 
 im_Img* readGif( im_reader* rdr )
 {
+    struct readstate state;
+
     GifFileType* gif;
     int err;
     bool done=false;
@@ -50,6 +65,11 @@ im_Img* readGif( im_reader* rdr )
         im_err(translate_err(err));
         return NULL;
     }
+
+    //
+    state.gif = gif;
+    state.gcb_valid = false;
+
 
     while(!done) {
         GifRecordType rec_type;
@@ -62,12 +82,12 @@ im_Img* readGif( im_reader* rdr )
                     done=true;
                     break;
                 case IMAGE_DESC_RECORD_TYPE:
-                    if(!read_image(gif)) {
+                    if(!read_image(&state)) {
                         done=true;
                     }
                     break;
                 case EXTENSION_RECORD_TYPE:
-                    read_extension(gif);
+                    read_extension(&state);
                     break;
                 case TERMINATE_RECORD_TYPE:
                     printf("TERMINATE_RECORD_TYPE\n");
@@ -88,8 +108,9 @@ im_Img* readGif( im_reader* rdr )
 }
 
 
-static bool read_image( GifFileType* gif )
+static bool read_image( struct readstate* state )
 {
+    GifFileType* gif = state->gif;
     int y;
 
     if (DGifGetImageDesc(gif) != GIF_OK) {
@@ -128,8 +149,9 @@ static bool read_image( GifFileType* gif )
     return true;
 }
 
-static bool read_extension( GifFileType* gif )
+static bool read_extension( struct readstate* state )
 {
+    GifFileType* gif = state->gif;
     GifByteType* buf;
     int ext_code;
 
@@ -138,13 +160,14 @@ static bool read_extension( GifFileType* gif )
     }
 
     if (ext_code==GRAPHICS_EXT_FUNC_CODE) {
-        GraphicsControlBlock gcb;
-        if(DGifExtensionToGCB(buf[0], buf+1, &gcb)!=GIF_OK) {
+        if(DGifExtensionToGCB(buf[0], buf+1, &state->gcb)!=GIF_OK) {
             return false;
         }
+        state->gcb_valid = true;
         printf("ext (GCB) disposal=%d delay=%d trans=%d\n",
-                gcb.DisposalMode, gcb.DelayTime, gcb.TransparentColor );
+                state->gcb.DisposalMode, state->gcb.DelayTime, state->gcb.TransparentColor );
     } else if (ext_code==APPLICATION_EXT_FUNC_CODE) {
+        // TODO: check for NETSCAPE block with loop count
         printf("ext (0xff - application) %d bytes: '%c%c%c%c%c%c%c%c'\n",
              buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8]);
     } else {
