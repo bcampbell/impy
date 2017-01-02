@@ -14,7 +14,7 @@ struct readstate {
     GraphicsControlBlock gcb;
 
     int loop_count; // from NETSCAPE block
-    // TODO: record comment blocks
+    // TODO: stash any comment extension records we encounter
 
     //
     im_bundle *bundle;
@@ -22,7 +22,7 @@ struct readstate {
 
 
 
-static bool read_image(struct readstate *state);
+static im_Img* read_image(struct readstate *state);
 static bool read_extension(struct readstate *state);
 static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx);
 
@@ -58,69 +58,93 @@ bool isGif(const uint8_t* buf, int nbytes)
 
 im_Img* readGif( im_reader* rdr )
 {
-    struct readstate state;
-
-    GifFileType* gif;
-    int err;
-    bool done=false;
-
-    gif = DGifOpen( (void*)rdr, input_fn, &err);
-    if (!gif) {
-        im_err(translate_err(err));
+    im_Img* img;
+    im_bundle* b = multiReadGif(rdr);
+    SlotID id = {0};
+    if (!b) {
         return NULL;
     }
+    img = im_bundle_get(b,id);
+    // TODO: detach image and delete bundle!
+    return img;
+}
 
-    //
-    state.gif = gif;
+im_bundle* multiReadGif( im_reader* rdr )
+{
+    struct readstate state;
+    int err;
+    bool done=false;
+    SlotID frame = {0};
+
     state.gcb_valid = false;
-
+    state.gif = DGifOpen( (void*)rdr, input_fn, &err);
+    state.bundle = im_bundle_new();
+    if (!state.gif) {
+        im_err(translate_err(err));
+        goto bailout;
+    }
 
     while(!done) {
         GifRecordType rec_type;
-        if (DGifGetRecordType(gif, &rec_type) == GIF_OK) {
-            switch(rec_type) {
-                case UNDEFINED_RECORD_TYPE:
-                case SCREEN_DESC_RECORD_TYPE:
-                    printf("fook\n");
-                    im_err(ERR_MALFORMED);
-                    done=true;
-                    break;
-                case IMAGE_DESC_RECORD_TYPE:
-                    if(!read_image(&state)) {
-                        done=true;
-                    }
-                    break;
-                case EXTENSION_RECORD_TYPE:
-                    read_extension(&state);
-                    break;
-                case TERMINATE_RECORD_TYPE:
-                    printf("TERMINATE_RECORD_TYPE\n");
-                    done=true;
-                    break;
-            }
-        } else {
+        if (DGifGetRecordType(state.gif, &rec_type) != GIF_OK) {
             im_err(ERR_MALFORMED);
-            done=true;
+            goto bailout;
+        }
+        switch(rec_type) {
+            case UNDEFINED_RECORD_TYPE:
+            case SCREEN_DESC_RECORD_TYPE:
+                im_err(ERR_MALFORMED);
+                goto bailout;
+            case IMAGE_DESC_RECORD_TYPE:
+                {
+                    im_Img* img = read_image(&state);
+                    if (!img) {
+                        goto bailout;
+                    }
+                    if( !im_bundle_set(state.bundle, frame, img) ) {
+                        goto bailout;
+                    }
+                    ++frame.frame;
+                }
+                break;
+            case EXTENSION_RECORD_TYPE:
+                if( !read_extension(&state) ) {
+                    goto bailout;
+                }
+                break;
+            case TERMINATE_RECORD_TYPE:
+                done=true;
+                break;
         }
     }
 
-    if(DGifCloseFile(gif, &err)!=GIF_OK) {
-        // TODO: clean up!
+    if(DGifCloseFile(state.gif, &err)!=GIF_OK) {
+        state.gif = NULL;
         im_err(translate_err(err));
+        goto bailout;
     }
+
+    return state.bundle;
+
+bailout:
+    if (state.gif) {
+        DGifCloseFile(state.gif, &err);
+    }
+    im_bundle_free(state.bundle);
     return NULL;
 }
 
 
-static bool read_image( struct readstate* state )
+static im_Img* read_image( struct readstate* state )
 {
     GifFileType* gif = state->gif;
     int y;
     int w,h;
-    im_Img *img;
+    im_Img *img=NULL;
+
     if (DGifGetImageDesc(gif) != GIF_OK) {
         // TODO: set error?
-        return false;
+        goto bailout;
     }
 
     w = gif->Image.Width;
@@ -130,8 +154,6 @@ static bool read_image( struct readstate* state )
     //printf("image (%dx%d)\n", gif->Image.Width, gif->Image.Height);
 
     if (gif->Image.Interlace) {
-        uint8_t buf = [1024];
-
         // GIF interlacing stores the lines in the order:
         // 0, 8, 16, ...(8n)
         // 4, 12, ...(8n+4)
@@ -145,7 +167,7 @@ static bool read_image( struct readstate* state )
                 uint8_t *dest = im_img_row(img,y);
                 if (DGifGetLine(gif, dest, w) != GIF_OK) {
                     // TODO: set error?
-                    return false;
+                    goto bailout;
                 }
             }
         }
@@ -154,27 +176,28 @@ static bool read_image( struct readstate* state )
             uint8_t *dest = im_img_row(img,y);
             if (DGifGetLine(gif, dest, w) != GIF_OK) {
                 // TODO: set error?
-                return false;
+                goto bailout;
             }
         }
     }
 
     // TODO: set GCB stuff here - delay, disposition etc
     //
-    if (gif->Image->ColorMap) {
-        pal = build_palette(gif->Image->ColorMap,-1);
+    if (gif->Image.ColorMap) {
+        img->Palette = build_palette(gif->Image.ColorMap,-1);
     } else if (gif->SColorMap) {
-        pal = build_palette(gif->SColorMap,-1);
+        img->Palette = build_palette(gif->SColorMap,-1);
     } else {
         // TODO: it's valid (but bonkers) for gif files to have no palette
-        pal = NULL;
     }
 
-    if (pal) {
-        img->Palette = pal;
-    }
+    return img;
 
-    return true;
+bailout:
+    if (img) {
+        im_img_free(img);
+    }
+    return NULL;
 }
 
 static bool read_extension( struct readstate* state )
@@ -192,14 +215,18 @@ static bool read_extension( struct readstate* state )
             return false;
         }
         state->gcb_valid = true;
+        /*
         printf("ext (GCB) disposal=%d delay=%d trans=%d\n",
                 state->gcb.DisposalMode, state->gcb.DelayTime, state->gcb.TransparentColor );
+                */
     } else if (ext_code==APPLICATION_EXT_FUNC_CODE) {
         // TODO: check for NETSCAPE block with loop count
+        /*
         printf("ext (0xff - application) %d bytes: '%c%c%c%c%c%c%c%c'\n",
              buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8]);
+             */
     } else {
-        printf("ext (0x%02x)\n",ext_code);
+        /*printf("ext (0x%02x)\n",ext_code); */
     }
 
     while (1) {
@@ -207,11 +234,11 @@ static bool read_extension( struct readstate* state )
             return false;
         }
         if (buf==NULL) {
-            printf("  endext\n");
+            //printf("  endext\n");
             break;
         }
         // TODO: collect comment blocks here
-        printf("  extnext (%d bytes)\n", buf[0]);
+        //printf("  extnext (%d bytes)\n", buf[0]);
     }
     return true;
 }
@@ -228,7 +255,7 @@ static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx)
         }
         dest = pal->Data;
         for (i=0; i<cm->ColorCount; ++i) {
-            GifColorType *src = cm->Colors[i];
+            GifColorType *src = &cm->Colors[i];
             *dest++ = src->Red;
             *dest++ = src->Green;
             *dest++ = src->Blue;
@@ -240,7 +267,7 @@ static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx)
         }
         dest = pal->Data;
         for (i=0; i<cm->ColorCount; ++i) {
-            GifColorType *src = cm->Colors[i];
+            GifColorType *src = &cm->Colors[i];
             *dest++ = src->Red;
             *dest++ = src->Green;
             *dest++ = src->Blue;

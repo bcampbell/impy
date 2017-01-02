@@ -87,6 +87,13 @@ typedef struct im_reader {
 } im_reader;
 
 
+/* Bundle-related stuff */
+typedef struct im_bundle im_bundle;
+typedef struct SlotID {
+    int frame,mipmap,layer,face;
+} SlotID;
+
+
 extern im_reader* im_open_file_reader( const char* filename);
 //extern im_reader* im_open_mem_reader( const void* data, size_t nbytes );
 
@@ -149,17 +156,8 @@ extern bool isGif(const uint8_t* buf, int nbytes);
 extern bool writePng(im_writer* out, im_Img* img);
 
 extern im_Img* readGif(im_reader* rdr);
+extern im_bundle* multiReadGif( im_reader* rdr );
 
-
-
-/*
- * Bundle-related stuff
- */
-
-typedef struct im_bundle im_bundle;
-typedef struct SlotID {
-    int frame,mipmap,layer,face;
-} SlotID;
 
 im_bundle* im_bundle_new();
 void im_bundle_free(im_bundle* bundle);

@@ -120,13 +120,27 @@ static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const i
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
-    for (x=0; x<w; ++x) {
-        int idx = ((int)*src ) *4;
-        ++src;
-        *dest++ = cols[idx+0];
-        *dest++ = cols[idx+1];
-        *dest++ = cols[idx+2];
-    } 
+    switch (srcPal->Format)
+    {
+        case PALFMT_RGB:
+            for (x=0; x<w; ++x) {
+                int idx = ((int)*src ) *3;
+                ++src;
+                *dest++ = cols[idx+0];
+                *dest++ = cols[idx+1];
+                *dest++ = cols[idx+2];
+            } 
+            break;
+        case PALFMT_RGBA:
+            for (x=0; x<w; ++x) {
+                int idx = ((int)*src ) *4;
+                ++src;
+                *dest++ = cols[idx+0];
+                *dest++ = cols[idx+1];
+                *dest++ = cols[idx+2];
+            } 
+            break;
+    }
 }
 
 
@@ -134,14 +148,29 @@ static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const 
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
-    for (x=0; x<w; ++x) {
-        int idx = ((int)*src ) *4;
-        ++src;
-        *dest++ = cols[idx+0];
-        *dest++ = cols[idx+1];
-        *dest++ = cols[idx+2];
-        *dest++ = cols[idx+3];
-    } 
+    switch (srcPal->Format)
+    {
+        case PALFMT_RGB:
+            for (x=0; x<w; ++x) {
+                int idx = ((int)*src ) *3;
+                ++src;
+                *dest++ = cols[idx+0];
+                *dest++ = cols[idx+1];
+                *dest++ = cols[idx+2];
+                *dest++ = 255;
+            } 
+            break;
+        case PALFMT_RGBA:
+            for (x=0; x<w; ++x) {
+                int idx = ((int)*src ) *4;
+                ++src;
+                *dest++ = cols[idx+0];
+                *dest++ = cols[idx+1];
+                *dest++ = cols[idx+2];
+                *dest++ = cols[idx+3];
+            } 
+            break;
+    }
 }
 
 
@@ -162,25 +191,51 @@ static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const 
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
-    for (x=0; x<w; ++x) {
-        int idx = ((int)*src ) *4;
-        ++src;
-        *dest++ = cols[idx+2];
-        *dest++ = cols[idx+1];
-        *dest++ = cols[idx+0];
-        *dest++ = cols[idx+3];
-    } 
+    switch (srcPal->Format)
+    {
+        case PALFMT_RGB:
+            for (x=0; x<w; ++x) {
+                int idx = ((int)*src ) *3;
+                ++src;
+                *dest++ = cols[idx+2];
+                *dest++ = cols[idx+1];
+                *dest++ = cols[idx+0];
+                *dest++ = 255;
+            } 
+            break;
+        case PALFMT_RGBA:
+            for (x=0; x<w; ++x) {
+                int idx = ((int)*src ) *4;
+                ++src;
+                *dest++ = cols[idx+2];
+                *dest++ = cols[idx+1];
+                *dest++ = cols[idx+0];
+                *dest++ = cols[idx+3];
+            } 
+            break;
+    }
 }
 
 static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
-    for (x=0; x<w; ++x) {
-        int idx = ((int)*src ) *4;
-        ++src;
-        *dest++ = cols[idx+3];
-    } 
+    switch (srcPal->Format)
+    {
+        case PALFMT_RGB:
+            // BONKERS.
+            for (x=0; x<w; ++x) {
+                *dest++ = 255;
+            } 
+            break;
+        case PALFMT_RGBA:
+            for (x=0; x<w; ++x) {
+                int idx = ((int)*src ) *4;
+                ++src;
+                *dest++ = cols[idx+3];
+            } 
+            break;
+    }
 }
 
 

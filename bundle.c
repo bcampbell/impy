@@ -49,7 +49,7 @@ static int slotid_cmp(const SlotID a, const SlotID b)
 }
 
 
-im_bundle* im_bundle_create()
+im_bundle* im_bundle_new()
 {
     const int initialcap = 8;
     im_bundle* b = imalloc(sizeof(im_bundle));
