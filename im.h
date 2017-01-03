@@ -161,10 +161,11 @@ extern im_Img* readGif(im_reader* rdr);
 extern im_bundle* multiReadGif( im_reader* rdr );
 
 
-im_bundle* im_bundle_new();
-void im_bundle_free(im_bundle* bundle);
-bool im_bundle_set(im_bundle* bundle, const SlotID id, im_Img* img);
-im_Img* im_bundle_get(im_bundle* bundle, const SlotID id);
+extern im_bundle* im_bundle_new();
+extern void im_bundle_free(im_bundle* bundle);
+extern bool im_bundle_set(im_bundle* bundle, const SlotID id, im_Img* img);
+extern im_Img* im_bundle_get(im_bundle* bundle, const SlotID id);
+extern const SlotID im_bundle_extents(im_bundle* b);
 
 // PRIVATE
 extern void* imalloc( size_t size);

@@ -167,5 +167,10 @@ bool im_bundle_set(im_bundle* b, const SlotID id, im_Img* img)
 
 
 
+const SlotID im_bundle_extents(im_bundle* b)
+{
+    return b->extents;
+}
+
 
 

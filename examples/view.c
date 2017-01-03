@@ -1,5 +1,3 @@
-// gcc -ggdb im.c im_convert.c im_png.c main.c `pkg-config libpng sdl2 --libs --cflags`
-
 #include "im.h"
 #include <stdio.h>
 
@@ -8,13 +6,16 @@
 
 SDL_Window *win = NULL;
 SDL_Renderer *ren = NULL;
-im_Img* img = NULL;
-SDL_Surface *bmp = NULL;
+im_bundle* bundle = NULL;
+SlotID cur = {0};
 SDL_Texture *tex = NULL;
 int scale = 1;
 
 void cleanup();
 void show();
+bool set_frame(int n);
+void prev_frame();
+void next_frame();
 
 int main( int argc, char* argv[])
 {
@@ -42,40 +43,18 @@ int main( int argc, char* argv[])
     	return 1;
     }
 
-    im_Img* img2 = im_img_load(argv[1]);
-    if (img2==NULL) {
-        fprintf(stderr,"Poop.\n");
-        cleanup();
-        return 1;
-    }
-
-    img = im_img_convert(img2, FMT_RGB, DT_U8);
-    im_img_free(img2);
-    if (img==NULL) {
-        fprintf(stderr,"Poop.\n");
+    bundle = im_bundle_load(argv[1]);
+    if (bundle==NULL) {
+        fprintf(stderr,"load failed.\n");
         cleanup();
         return 1;
     }
 
 
-
-    // bmp shares the pixel data (it doesn't take it's own copy)
-    // little-endian assumption...
-    bmp = SDL_CreateRGBSurfaceFrom(img->Data,
-            img->Width, img->Height, 24, img->Pitch, 0x0000ff,0x00ff00,0xff0000,0);
-    if (!bmp) {
-        fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
+    if(!set_frame(0) ) {
+        fprintf(stderr,"set_frame failed.\n");
         cleanup();
         return 1;
-    }
-    
-
-    printf("%dx%d\n", img->Width, img->Height);
-
-    tex = SDL_CreateTextureFromSurface(ren, bmp);
-    if (tex == 0 ){
-        cleanup();
-    	return 1;
     }
 
     show();
@@ -101,6 +80,8 @@ int main( int argc, char* argv[])
                     case SDL_SCANCODE_3: scale = 4; break;
                     case SDL_SCANCODE_4: scale = 8; break;
                     case SDL_SCANCODE_5: scale = 16; break;
+                    case SDL_SCANCODE_LEFT: prev_frame(); break;
+                    case SDL_SCANCODE_RIGHT: next_frame(); break;
                 }
                 show();
                 break;
@@ -111,6 +92,86 @@ int main( int argc, char* argv[])
     cleanup();
     return 0;
 }
+
+
+static SDL_Texture* to_texture(im_Img* img)
+{
+    SDL_Surface* surf;
+    SDL_Texture *t;
+    im_Img* img2;
+
+    img2 = im_img_convert(img, FMT_RGB, DT_U8);
+    if (img2==NULL) {
+        fprintf(stderr,"Poop.\n");
+        return NULL;
+    }
+
+
+
+    // bmp shares the pixel data (it doesn't take it's own copy)
+    // little-endian assumption...
+    surf = SDL_CreateRGBSurfaceFrom(img2->Data,
+            img2->Width, img2->Height, 24, img2->Pitch, 0x0000ff,0x00ff00,0xff0000,0);
+    if (!surf) {
+        im_img_free(img2);
+        fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
+        return NULL;
+    }
+
+    t = SDL_CreateTextureFromSurface(ren, surf);
+    im_img_free(img2);
+    SDL_FreeSurface(surf);
+
+    return t;
+}
+
+
+bool set_frame(int n)
+{
+    SlotID id = {0};
+    SDL_Texture* t;
+    im_Img* img;
+
+    id.frame = n;
+
+    img = im_bundle_get(bundle, id);
+    if( img == NULL ) {
+        return false;
+    }
+
+    t = to_texture(img);
+    if( t== NULL) {
+        return false;
+    }
+
+    tex = t;
+    cur = id;
+    return true;
+}
+
+
+void prev_frame()
+{
+    SlotID extents = im_bundle_extents(bundle);
+    int n = cur.frame - 1;
+    if(n < 0 ) {
+        n = extents.frame;
+    }
+    set_frame(n);
+    show();
+}
+
+void next_frame()
+{
+    SlotID extents = im_bundle_extents(bundle);
+    int n = cur.frame + 1;
+    if(n > extents.frame) {
+        n = 0;
+    }
+    set_frame(n);
+    show();
+}
+
 
 
 void show()
@@ -144,11 +205,8 @@ void cleanup()
     if (tex) {
         SDL_DestroyTexture(tex);
     }
-    if (bmp) {
-        SDL_FreeSurface(bmp);
-    }
-    if (img) {
-        im_img_free(img);
+    if (bundle) {
+        im_bundle_free(bundle);
     }
     if (ren) {
         SDL_DestroyRenderer(ren);
