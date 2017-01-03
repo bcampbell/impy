@@ -2,6 +2,23 @@
 
 #include <stdlib.h>
 
+struct driver {
+    bool (*match_cookie)(const uint8_t* buf, int nbytes);
+    im_Img* (*read_img)( im_reader* rdr);
+    im_bundle* (*read_bundle)( im_reader* rdr);
+
+    bool (*match_ext)(const char* file_extension );
+    bool (*write_img)( im_writer* out, im_Img* img );
+    bool (*write_bundle)( im_writer* out, im_bundle* bundle );
+};
+
+static struct driver pngdriver = {isPng,readPng, NULL, NULL, writePng, NULL};
+static struct driver gifdriver = {isGif,NULL, multiReadGif, NULL, NULL, NULL};
+static struct driver *drivers[2] = { &pngdriver, &gifdriver };
+
+
+static struct driver* pick_driver_for_read(im_reader* rdr);
+
 void* imalloc( size_t size)
 {
     return malloc(size);
@@ -150,16 +167,13 @@ void im_pal_free( im_Pal* pal )
 }
 
 
-im_Img* im_img_load( const char* filename)
-{
-    im_reader* rdr = im_open_file_reader(filename);
-    im_Img* img = im_img_read(rdr);
-    im_close_reader(rdr);
-    return img;
-}
 
-im_Img* im_img_read( im_reader* rdr)
+
+static struct driver* pick_driver_for_read(im_reader* rdr)
 {
+    int i;
+    struct driver* d = NULL;
+
     uint8_t cookie[8];
     if (im_read(rdr, cookie, sizeof(cookie)) != sizeof(cookie)) {
         im_err(ERR_FILE);
@@ -171,13 +185,89 @@ im_Img* im_img_read( im_reader* rdr)
         im_err(ERR_FILE);
         return NULL;
     }
-
-    if (isPng(cookie,sizeof(cookie))) {
-        return readPng(rdr);
+    for (i=0; i<2; ++i) {
+        d = drivers[i];
+        if (d->match_cookie(cookie,sizeof(cookie))) {
+            return d;
+        }
     }
 
-    if (isGif(cookie,sizeof(cookie))) {
-        return readGif(rdr);
+    im_err(ERR_UNKNOWN_FILE_TYPE);
+    return NULL;
+}
+
+
+im_Img* im_img_load( const char* filename)
+{
+    im_reader* rdr = im_open_file_reader(filename);
+    im_Img* img = im_img_read(rdr);
+    im_close_reader(rdr);
+    return img;
+}
+
+im_Img* im_img_read( im_reader* rdr)
+{
+    struct driver* drv = pick_driver_for_read(rdr);
+    if(!drv) {
+        return NULL;
+    }
+
+
+    if (drv->read_img) {
+        return drv->read_img(rdr);
+    }
+    if (drv->read_bundle) {
+        im_Img* img;
+        im_bundle* b = drv->read_bundle(rdr);
+        SlotID id = {0};
+        if (!b) {
+            return NULL;
+        }
+        img = im_bundle_get(b,id);
+        // TODO: detach image and delete bundle!
+        return img;
+    }
+
+    im_err(ERR_UNKNOWN_FILE_TYPE);
+    return NULL;
+}
+
+im_bundle* im_bundle_load( const char* filename)
+{
+    im_reader* rdr = im_open_file_reader(filename);
+    im_bundle* b = im_bundle_read(rdr);
+    im_close_reader(rdr);
+    return b;
+}
+
+im_bundle* im_bundle_read( im_reader* rdr)
+{
+    struct driver* drv = pick_driver_for_read(rdr);
+    if(!drv) {
+        return NULL;
+    }
+
+    if (drv->read_bundle) {
+        return drv->read_bundle(rdr);
+    }
+    if (drv->read_img) {
+        im_bundle* b;
+        im_Img* img = drv->read_img(rdr);
+        if (!img) {
+            return NULL;
+        }
+        b = im_bundle_new();
+        if (!b) {
+            im_img_free(img);
+            return NULL;
+        }
+        SlotID id = {0};
+        if (!im_bundle_set(b, id, img)) {
+            im_img_free(img);
+            im_bundle_free(b);
+            return NULL;
+        }
+        return b;
     }
 
     im_err(ERR_UNKNOWN_FILE_TYPE);
