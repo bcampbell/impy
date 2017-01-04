@@ -167,9 +167,21 @@ bool im_bundle_set(im_bundle* b, const SlotID id, im_Img* img)
 
 
 
-const SlotID im_bundle_extents(im_bundle* b)
+SlotID im_bundle_extents(im_bundle* b)
 {
     return b->extents;
+}
+
+int im_bundle_num_frames(im_bundle* b)
+{
+    return b->extents.frame + 1;
+}
+
+im_Img* im_bundle_get_frame(im_bundle* b, int n)
+{
+    SlotID id = {0};
+    id.frame = n;
+    return im_bundle_get(b,id);
 }
 
 

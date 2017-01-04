@@ -1,6 +1,7 @@
 #include "im.h"
 
 #include <stdlib.h>
+#include <string.h> // for memcmp
 
 struct driver {
     bool (*match_cookie)(const uint8_t* buf, int nbytes);
@@ -10,6 +11,8 @@ struct driver {
     bool (*match_ext)(const char* file_extension );
     bool (*write_img)( im_writer* out, im_Img* img );
     bool (*write_bundle)( im_writer* out, im_bundle* bundle );
+
+    // TODO: add a suitable() fn to check formats, palettes, anim etc...
 };
 
 static struct driver pngdriver = {isPng,readPng, NULL, NULL, writePng, NULL};
@@ -104,6 +107,10 @@ im_Img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
     img->Width = w;
     img->Height = h;
     img->Depth = d;
+
+    img->XOffset = 0;
+    img->YOffset = 0;
+
     img->Format = fmt;
     img->Datatype = datatype;
     img->BytesPerPixel = bytesPerPixel;
@@ -166,6 +173,27 @@ void im_pal_free( im_Pal* pal )
     ifree(pal);
 }
 
+// returns true if palettes are equal (same format, same colours)
+bool im_pal_equal( im_Pal* a, im_Pal* b )
+{
+    size_t nbytes;
+
+    if( a->NumColours!=b->NumColours) {
+        return false;
+    }
+    if( a->Format!=b->Format) {
+        return false;
+    }
+    switch (a->Format) {
+        case PALFMT_RGB: nbytes=3; break;
+        case PALFMT_RGBA: nbytes=4; break;
+        default: return false;
+    }
+    if(memcmp( a->Data, b->Data, nbytes) != 0 ) {
+        return false;
+    }
+    return true;
+}
 
 
 

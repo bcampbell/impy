@@ -61,6 +61,8 @@ typedef struct im_Img {
     int Height;
     int Depth;
 
+    int XOffset;
+    int YOffset;
 
     ImFmt Format;     // FMT_*
     ImDatatype Datatype;     // DT_*
@@ -140,6 +142,7 @@ extern im_Img* im_img_convert( const im_Img* srcImg, ImFmt destFmt, ImDatatype d
 
 extern im_Pal* im_pal_new( ImPalFmt fmt, int numColours );
 extern void im_pal_free( im_Pal* pal );
+extern bool im_pal_equal( im_Pal* a, im_Pal* b );
 
 extern void im_err(ImErr err);
 
@@ -165,7 +168,10 @@ extern im_bundle* im_bundle_new();
 extern void im_bundle_free(im_bundle* bundle);
 extern bool im_bundle_set(im_bundle* bundle, const SlotID id, im_Img* img);
 extern im_Img* im_bundle_get(im_bundle* bundle, const SlotID id);
-extern const SlotID im_bundle_extents(im_bundle* b);
+extern SlotID im_bundle_extents(im_bundle* b);
+
+extern int im_bundle_num_frames(im_bundle* b);
+extern im_Img* im_bundle_get_frame(im_bundle* b, int n);
 
 // PRIVATE
 extern void* imalloc( size_t size);

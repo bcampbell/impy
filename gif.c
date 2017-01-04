@@ -1,10 +1,28 @@
 #include "im.h"
 
 #include <stdio.h>
+#include <limits.h>
 #include <gif_lib.h>
 
-// TODO: check GIFLIB_MAJOH version >= 5
+// TODO: check GIFLIB_MAJOR version >= 5
 
+
+static ImErr translate_err( int gif_err_code );
+
+
+static ImErr translate_err( int gif_err_code )
+{
+    switch(gif_err_code) {
+        case D_GIF_ERR_NOT_GIF_FILE: return ERR_MALFORMED;
+        case D_GIF_ERR_NOT_ENOUGH_MEM: return ERR_NOMEM;
+       //TODO:
+        default: return ERR_MALFORMED; 
+    }
+}
+
+/**************
+ * GIF READING
+ **************/
 
 struct readstate {
     GifFileType *gif;
@@ -20,11 +38,10 @@ struct readstate {
     im_bundle *bundle;
 };
 
-
-
 static im_Img* read_image(struct readstate *state);
 static bool read_extension(struct readstate *state);
 static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx);
+
 
 static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 {
@@ -33,15 +50,6 @@ static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 }
 
 
-static ImErr translate_err( int gif_err_code )
-{
-    switch(gif_err_code) {
-        case D_GIF_ERR_NOT_GIF_FILE: return ERR_MALFORMED;
-        case D_GIF_ERR_NOT_ENOUGH_MEM: return ERR_NOMEM;
-       //TODO:
-        default: return ERR_MALFORMED; 
-    }
-}
 
 bool isGif(const uint8_t* buf, int nbytes)
 {
@@ -276,5 +284,244 @@ static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx)
     }
     return pal;
 }
+
+
+/***************
+ * GIF WRITING
+ ***************/
+
+static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
+{
+    im_writer* out = (im_writer*)gif->UserData;
+    return (int)im_write(out, (void*)buf, (size_t)size);
+}
+
+
+static ColorMapObject *palette_to_cm( im_Pal* pal, int *trans )
+{
+
+    ColorMapObject* cm;
+    GifColorType* dest;
+    const uint8_t* src;
+    int i;
+
+    // TODO:  GifMakeMapObject fails if colour count is not power-of-two.
+    cm = GifMakeMapObject( pal->NumColours, NULL );
+    if (!cm) {
+        im_err(ERR_NOMEM);
+        return NULL;
+    }
+    
+    src = pal->Data;
+    dest = cm->Colors;
+    *trans = -1;
+    switch (pal->Format) {
+        case PALFMT_RGB:
+            for (i=0; i<pal->NumColours; ++i) {
+                dest->Red = *src++;
+                dest->Green = *src++;
+                dest->Blue = *src++;
+                ++dest;
+            }
+            break;
+        case PALFMT_RGBA:
+            {
+                uint8_t alpha;
+                for (i=0; i<pal->NumColours; ++i) {
+                    dest->Red = *src++;
+                    dest->Green = *src++;
+                    dest->Blue = *src++;
+                    ++dest;
+                    alpha = *src++;
+                    if( alpha==0 && i>*trans) {
+                        *trans = i;
+                    }
+                }
+            }
+            break;
+        default:
+            im_err(ERR_UNSUPPORTED);
+            GifFreeMapObject(cm);
+            return NULL;
+    }
+    return cm; 
+}
+
+
+// calc extent of all frames in a bundle
+static bool calc_extents( im_bundle* b, int* min_x, int* min_y, int* max_x, int* max_y  ) {
+    im_Img* img;
+    int n;
+    int num_frames = im_bundle_num_frames(b);
+    *min_x = INT_MAX;
+    *min_y = INT_MAX;
+    *max_x = INT_MIN;
+    *max_y = INT_MIN;
+
+    for (n=0; n<num_frames; ++n) {
+        img = im_bundle_get_frame(b,n);
+        if (!img) {
+            im_err(ERR_BADPARAM);
+            return false;
+        }
+        if( img->XOffset < *min_x) {
+            *min_x = img->XOffset;
+        } 
+        if( img->YOffset < *min_y) {
+            *min_y = img->YOffset;
+        } 
+        if( img->XOffset+ img->Width > *max_x) {
+            *max_x = img->XOffset + img->Width;
+        } 
+        if( img->YOffset+ img->Height > *max_y) {
+            *max_y = img->YOffset + img->Height;
+        } 
+
+    }
+
+    return true;
+}
+
+
+static int calc_colour_res( int ncolours) {
+    int i;
+    for( i=1; i<=8; ++i) {
+        if( ncolours <= (1<<i)) {
+            return i;
+        }
+    }
+    return 8;
+}
+
+
+bool write_bundle( im_writer* out, im_bundle* bundle )
+{
+    GifFileType *gif = NULL;
+    int err;
+    im_Img* img;
+    im_Img* first_img;
+    int num_frames = im_bundle_num_frames(bundle);
+    int min_x,min_y, max_x, max_y;
+    ColorMapObject* global_cm = NULL;
+    int trans;
+    int frame;
+
+    // TODO: ensure all frames are indexed
+
+    if (num_frames) {
+        im_err(ERR_BADPARAM);
+        return false;
+    }
+
+    if( !calc_extents( bundle, &min_x, &min_y, &max_x, &max_y) ) {
+        return false;
+    }
+
+    first_img = im_bundle_get_frame(bundle, 0);
+    if (!img) {
+        im_err(ERR_BADPARAM);
+        return false;
+    }
+
+    global_cm = palette_to_cm( first_img->Palette, &trans);
+    if (!global_cm) {
+        return false;
+    }
+
+
+    gif = EGifOpen((void*)out, output_fn, &err);
+    if (!gif) {
+        im_err(translate_err(err));
+        return false;
+    }
+
+    // GIF89 - TODO: only if needed...
+    EGifSetGifVersion(gif, true);
+
+    if (GIF_OK != EGifPutScreenDesc(gif,
+        max_x-min_x,
+        max_y-min_y,
+        calc_colour_res(global_cm->ColorCount),
+        0,  // (bgcolor)
+        global_cm))
+    {
+        im_err(translate_err(gif->Error));
+        goto bailout;
+    }
+
+    for( frame=0; frame<num_frames; ++frame) {
+        im_Img* img;
+        ColorMapObject* frame_cm = NULL;
+        int y;
+
+        img = im_bundle_get_frame(bundle, frame);
+        if( !img) {
+            im_err(ERR_BADPARAM);
+            goto bailout;
+        }
+        if( img->Format != FMT_COLOUR_INDEX ) {
+            im_err(ERR_UNSUPPORTED);
+            goto bailout;
+        }
+        if( !img->Palette ) {
+            im_err(ERR_BADPARAM);
+            goto bailout;
+        }
+
+        // TODO: write GCB block
+
+        // decide if frame requires its own palette
+        if( !im_pal_equal(first_img->Palette, img->Palette)) {
+            frame_cm = palette_to_cm(img->Palette, &trans);
+            if( !frame_cm) {
+                goto bailout;
+            }
+        }
+
+        if (GIF_OK != EGifPutImageDesc(
+            gif,
+            img->XOffset, img->YOffset,
+            img->Width, img->Height,
+            false,  // interlace
+            frame_cm))
+        {
+            if( frame_cm) {
+                GifFreeMapObject(frame_cm);
+            }
+            im_err(translate_err(gif->Error));
+            goto bailout;
+        }
+        if(frame_cm) {
+            GifFreeMapObject(frame_cm);
+        }
+
+        for (y=0; y<img->Height; ++y) {
+            if( GIF_OK !=EGifPutLine( gif, (GifPixelType*)im_img_row(img,y), img->Width)) {
+                im_err(translate_err(gif->Error));
+                goto bailout;
+            }
+        }
+    }
+
+    GifFreeMapObject(global_cm);
+    if( GIF_OK != EGifCloseFile(gif, &err) ) {
+        im_err(translate_err(err));
+        gif = NULL;
+        goto bailout;
+    }
+    return true;
+
+bailout:
+    if (global_cm) {
+        GifFreeMapObject(global_cm);
+    }
+    if (gif) {
+        EGifCloseFile(gif, &err);
+    }
+    return false;
+}
+
+
+
 
 
