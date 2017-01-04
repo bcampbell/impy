@@ -1,4 +1,4 @@
-LIBSRCS=im.c io.c bundle.c convert.c gif.c png_read.c png_write.c
+LIBSRCS=im.c io.c util.c bundle.c convert.c gif.c png_read.c png_write.c
 
 view: $(LIBSRCS) im.h examples/view.c
 	gcc -ggdb $(LIBSRCS) examples/view.c -I. -lgif `pkg-config libpng sdl2 --libs --cflags` -o $@ 
