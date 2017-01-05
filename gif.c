@@ -33,7 +33,7 @@ static ImErr translate_err( int gif_err_code )
 struct readstate {
     GifFileType *gif;
 
-    // the currently-active gcb data
+    // the currently-active gcb data, if any
     bool gcb_valid;
     GraphicsControlBlock gcb;
 
@@ -56,7 +56,8 @@ static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 }
 
 
-
+// returns true if buf contains gif magic cookie ("GIF87a" or "GIF89a")
+// (assumes buf contains at least 6 bytes)
 static bool is_gif(const uint8_t* buf, int nbytes)
 {
     //assert nbytes >= 6
@@ -70,6 +71,7 @@ static bool is_gif(const uint8_t* buf, int nbytes)
         p[5] == 'a');
 }
 
+// returns true if filename extenstion is ".gif" (case-insensitive)
 static bool match_gif_ext(const char* file_ext)
 {
     return (istricmp(file_ext,".gif")==0);
@@ -288,6 +290,7 @@ static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx)
 /***************
  * GIF WRITING
  ***************/
+static bool write_loops(GifFileType*gif, int loops);
 
 static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
 {
@@ -397,18 +400,14 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
 {
     GifFileType *gif = NULL;
     int err;
-    im_Img* img;
     im_Img* first_img;
     int num_frames = im_bundle_num_frames(bundle);
     int min_x,min_y, max_x, max_y;
     ColorMapObject* global_cm = NULL;
-    int trans;
+    int global_trans = -1;
     int frame;
 
     // TODO: ensure all frames are indexed
-
-
-    printf("write gif (%d frames)\n", num_frames);
 
     if (!num_frames) {
         im_err(ERR_BADPARAM);
@@ -419,13 +418,14 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
         return false;
     }
 
+    // Use first image to provide global colormap.
+    // Could be a more optimal palette, but this seems a reasonable way to go.
     first_img = im_bundle_get_frame(bundle, 0);
-    if (!img) {
+    if (!first_img) {
         im_err(ERR_BADPARAM);
         return false;
     }
-
-    global_cm = palette_to_cm( first_img->Palette, &trans);
+    global_cm = palette_to_cm( first_img->Palette, &global_trans);
     if (!global_cm) {
         return false;
     }
@@ -434,7 +434,7 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
     gif = EGifOpen((void*)out, output_fn, &err);
     if (!gif) {
         im_err(translate_err(err));
-        return false;
+        goto bailout;
     }
 
     // GIF89 - TODO: only if needed...
@@ -451,57 +451,17 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
         goto bailout;
     }
 
+    // output NETSCAPE application block, if needed for looping
+    if (num_frames>1) {
+        // TODO: allow non-infinite looping?
+        if(!write_loops(gif,0)) {
+            goto bailout;
+        }
+    }
+
     for( frame=0; frame<num_frames; ++frame) {
-        im_Img* img;
-        ColorMapObject* frame_cm = NULL;
-        int y;
-
-        img = im_bundle_get_frame(bundle, frame);
-        if( !img) {
-            im_err(ERR_BADPARAM);
+        if (!write_frame(gif, bundle, frame, first_img->Palette, global_trans ) ) {
             goto bailout;
-        }
-        if( img->Format != FMT_COLOUR_INDEX ) {
-            im_err(ERR_UNSUPPORTED);
-            goto bailout;
-        }
-        if( !img->Palette ) {
-            im_err(ERR_BADPARAM);
-            goto bailout;
-        }
-
-        // TODO: write GCB block
-
-        // decide if frame requires its own palette
-        if( !im_pal_equal(first_img->Palette, img->Palette)) {
-            frame_cm = palette_to_cm(img->Palette, &trans);
-            if( !frame_cm) {
-                goto bailout;
-            }
-        }
-
-        if (GIF_OK != EGifPutImageDesc(
-            gif,
-            img->XOffset, img->YOffset,
-            img->Width, img->Height,
-            false,  // interlace
-            frame_cm))
-        {
-            if( frame_cm) {
-                GifFreeMapObject(frame_cm);
-            }
-            im_err(translate_err(gif->Error));
-            goto bailout;
-        }
-        if(frame_cm) {
-            GifFreeMapObject(frame_cm);
-        }
-
-        for (y=0; y<img->Height; ++y) {
-            if( GIF_OK !=EGifPutLine( gif, (GifPixelType*)im_img_row(img,y), img->Width)) {
-                im_err(translate_err(gif->Error));
-                goto bailout;
-            }
         }
     }
 
@@ -524,6 +484,111 @@ bailout:
 }
 
 
+static bool write_loops(GifFileType*gif, int loops)
+{
+    uint8_t blk1[11] = { 'N','E','T','S','C','A','P','E','2','.','0' };
+    uint8_t blk2[3] = { 0x01, (loops&0xff), ((loops>>8) & 0xff)};
+    if(EGifPutExtensionLeader(gif, APPLICATION_EXT_FUNC_CODE) != GIF_OK) {
+        im_err(translate_err(gif->Error));
+        return false;
+    }
+    if(EGifPutExtensionBlock(gif, sizeof(blk1), blk1) != GIF_OK) {
+        im_err(translate_err(gif->Error));
+        return false;
+    }
+    if(EGifPutExtensionBlock(gif, sizeof(blk2), blk2) != GIF_OK) {
+        im_err(translate_err(gif->Error));
+        return false;
+    }
+    if(EGifPutExtensionTrailer(gif) != GIF_OK) {
+        im_err(translate_err(gif->Error));
+        return false;
+    }
+    return true;
+}
 
+
+static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_Pal* first_palette, int global_trans)
+{
+    im_Img* img;
+    int y;
+    ColorMapObject* frame_cm = NULL;
+    int trans = global_trans;
+
+    img = im_bundle_get_frame(bundle,frame);
+    if(!img) {
+        im_err(ERR_BADPARAM);
+        return false;
+    }
+
+    // sanity checking
+    if( img->Format != FMT_COLOUR_INDEX ) {
+        im_err(ERR_UNSUPPORTED);
+        goto bailout;
+    }
+    if( !img->Palette ) {
+        im_err(ERR_BADPARAM);
+        goto bailout;
+    }
+
+
+    // decide if frame requires its own palette
+    if( !im_pal_equal(first_palette, img->Palette)) {
+        frame_cm = palette_to_cm(img->Palette, &trans);
+        if( !frame_cm) {
+            return false;
+        }
+    }
+
+    // output a GCB block
+    {
+        uint8_t gcb_buf[4];
+        GraphicsControlBlock gcb = {0};
+        gcb.DisposalMode = DISPOSAL_UNSPECIFIED;
+        gcb.UserInputFlag = false;
+        gcb.DelayTime = 10; // in 0.01sec units
+        gcb.TransparentColor = trans;
+
+        EGifGCBToExtension(&gcb, (GifByteType*)gcb_buf);
+
+        if( EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, 4, gcb_buf) != GIF_OK) {
+            im_err(translate_err(gif->Error));
+            return false;
+        }
+    }
+
+
+    if (GIF_OK != EGifPutImageDesc(
+        gif,
+        img->XOffset, img->YOffset,
+        img->Width, img->Height,
+        false,  // interlace
+        frame_cm))
+    {
+        if( frame_cm) {
+            GifFreeMapObject(frame_cm);
+        }
+        im_err(translate_err(gif->Error));
+        goto bailout;
+    }
+
+    for (y=0; y<img->Height; ++y) {
+        if( GIF_OK !=EGifPutLine( gif, (GifPixelType*)im_img_row(img,y), img->Width)) {
+            im_err(translate_err(gif->Error));
+            goto bailout;
+        }
+    }
+    if(frame_cm) {
+        GifFreeMapObject(frame_cm);
+    }
+    return true;
+
+bailout:
+    if(frame_cm) {
+        GifFreeMapObject(frame_cm);
+    }
+    return false;
+
+}
 
 
