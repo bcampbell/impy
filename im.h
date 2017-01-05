@@ -153,6 +153,7 @@ extern im_Img* im_img_read( im_reader* rdr);
 extern im_bundle* im_bundle_load( const char* filename);
 extern im_bundle* im_bundle_read( im_reader* rdr);
 
+/*
 extern bool isPng(const uint8_t* buf, int nbytes);
 extern im_Img* readPng(im_reader* rdr);
 extern im_Img* loadPng(const char* fileName);
@@ -162,7 +163,7 @@ extern bool writePng(im_writer* out, im_Img* img);
 
 extern im_Img* readGif(im_reader* rdr);
 extern im_bundle* multiReadGif( im_reader* rdr );
-
+*/
 
 extern im_bundle* im_bundle_new();
 extern void im_bundle_free(im_bundle* bundle);

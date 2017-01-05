@@ -7,13 +7,12 @@
 static void custom_write(png_structp png_ptr,
     png_bytep data, png_size_t length);
 static void custom_flush(png_structp png_ptr);
-
 static bool suss_color_type( ImFmt fmt, int* color_type );
 static bool suss_bit_depth( ImDatatype dt, int *bit_depth);
-
 static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_Pal *pal);
 
-bool writePng( im_writer* out, im_Img* img )
+
+bool write_png_image( im_writer* out, im_Img* img )
 {
     png_structp png_ptr;
     png_infop info_ptr;

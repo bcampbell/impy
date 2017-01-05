@@ -1,4 +1,5 @@
 #include "im.h"
+#include "private.h"
 
 #include <stdio.h>
 #include <limits.h>
@@ -8,7 +9,10 @@
 
 
 static ImErr translate_err( int gif_err_code );
+static bool is_gif(const uint8_t* buf, int nbytes);
+static im_bundle* read_gif_bundle( im_reader* rdr );
 
+struct handler handle_gif = {is_gif, NULL, read_gif_bundle, NULL, NULL, NULL};
 
 static ImErr translate_err( int gif_err_code )
 {
@@ -51,7 +55,7 @@ static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 
 
 
-bool isGif(const uint8_t* buf, int nbytes)
+static bool is_gif(const uint8_t* buf, int nbytes)
 {
     //assert nbytes >= 6
     const char* p = (const char*)buf;
@@ -64,20 +68,8 @@ bool isGif(const uint8_t* buf, int nbytes)
         p[5] == 'a');
 }
 
-im_Img* readGif( im_reader* rdr )
-{
-    im_Img* img;
-    im_bundle* b = multiReadGif(rdr);
-    SlotID id = {0};
-    if (!b) {
-        return NULL;
-    }
-    img = im_bundle_get(b,id);
-    // TODO: detach image and delete bundle!
-    return img;
-}
 
-im_bundle* multiReadGif( im_reader* rdr )
+static im_bundle* read_gif_bundle( im_reader* rdr )
 {
     struct readstate state;
     int err;
@@ -394,7 +386,7 @@ static int calc_colour_res( int ncolours) {
 }
 
 
-bool write_bundle( im_writer* out, im_bundle* bundle )
+static bool write_gif_bundle( im_writer* out, im_bundle* bundle )
 {
     GifFileType *gif = NULL;
     int err;

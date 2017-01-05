@@ -17,7 +17,6 @@ bool set_frame(int n);
 void prev_frame();
 void next_frame();
 
-#include "util.h"
 
 int main( int argc, char* argv[])
 {

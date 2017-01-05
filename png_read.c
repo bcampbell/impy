@@ -1,13 +1,23 @@
 #include "im.h"
+#include "private.h"
+
 #include <png.h>
 #include <stdio.h>
 #include <stdint.h>
-
 
 static void info_callback(png_structp png_ptr, png_infop info_ptr);
 static void row_callback(png_structp png_ptr, png_bytep new_row, png_uint_32 row_num, int pass);
 static void end_callback(png_structp png_ptr, png_infop info);
 
+
+static bool is_png(const uint8_t* buf, int nbytes);
+static im_Img* read_png_image(im_reader* rdr);
+
+extern bool write_png_image( im_writer* out, im_Img* img );    // from png_write.c
+
+struct handler handle_png = {
+    is_png,read_png_image, NULL, NULL, write_png_image, NULL
+};
 
 // struct to track stuff needed during png progressive reading
 struct cbdat {
@@ -16,20 +26,8 @@ struct cbdat {
 };
 
 
-im_Img* loadPng(const char* fileName)
-{
-    im_Img *img;
-    im_reader* rdr = im_open_file_reader(fileName);
-    if (!rdr) {
-        return NULL;
-    }
-    img = readPng(rdr);
-    im_close_reader(rdr);
-    return img;
-}
 
-
-bool isPng(const uint8_t* buf, int nbytes)
+static bool is_png(const uint8_t* buf, int nbytes)
 {
     if( png_sig_cmp((png_bytep)buf,0,nbytes) == 0 ) {
         return true;
@@ -39,22 +37,7 @@ bool isPng(const uint8_t* buf, int nbytes)
 }
 
 
-/*
-    cookieRead = fread(cookieBuf, 1, sizeof(cookieBuf), fp);
-    if (cookieRead<sizeof(cookieBuf)) {
-        im_err(ERR_MALFORMED);
-        fclose(fp);
-        return NULL;
-    }
-
-    if (png_sig_cmp(cookieBuf, 0, cookieRead) != 0)
-    {
-        im_err(ERR_MALFORMED);
-        return NULL;
-    }
-*/
-
-im_Img* readPng(im_reader* rdr)
+static im_Img* read_png_image(im_reader* rdr)
 {
     struct cbdat cbDat = {0};
     png_structp png_ptr;

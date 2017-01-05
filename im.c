@@ -1,26 +1,16 @@
 #include "im.h"
+#include "private.h"
 
 #include <stdlib.h>
 #include <string.h> // for memcmp
 
-struct driver {
-    bool (*match_cookie)(const uint8_t* buf, int nbytes);
-    im_Img* (*read_img)( im_reader* rdr);
-    im_bundle* (*read_bundle)( im_reader* rdr);
-
-    bool (*match_ext)(const char* file_extension );
-    bool (*write_img)( im_writer* out, im_Img* img );
-    bool (*write_bundle)( im_writer* out, im_bundle* bundle );
-
-    // TODO: add a suitable() fn to check formats, palettes, anim etc...
-};
-
-static struct driver pngdriver = {isPng,readPng, NULL, NULL, writePng, NULL};
-static struct driver gifdriver = {isGif,NULL, multiReadGif, NULL, NULL, NULL};
-static struct driver *drivers[2] = { &pngdriver, &gifdriver };
 
 
-static struct driver* pick_driver_for_read(im_reader* rdr);
+
+static struct handler *handlers[2] = { &handle_png, &handle_gif, NULL };
+
+
+static struct handler* pick_handler_for_read(im_reader* rdr);
 
 void* imalloc( size_t size)
 {
@@ -197,10 +187,9 @@ bool im_pal_equal( im_Pal* a, im_Pal* b )
 
 
 
-static struct driver* pick_driver_for_read(im_reader* rdr)
+static struct handler* pick_handler_for_read(im_reader* rdr)
 {
     int i;
-    struct driver* d = NULL;
 
     uint8_t cookie[8];
     if (im_read(rdr, cookie, sizeof(cookie)) != sizeof(cookie)) {
@@ -213,10 +202,9 @@ static struct driver* pick_driver_for_read(im_reader* rdr)
         im_err(ERR_FILE);
         return NULL;
     }
-    for (i=0; i<2; ++i) {
-        d = drivers[i];
-        if (d->match_cookie(cookie,sizeof(cookie))) {
-            return d;
+    for (i=0; handlers[i] != NULL; ++i) {
+        if (handlers[i]->match_cookie(cookie,sizeof(cookie))) {
+            return handlers[i];
         }
     }
 
@@ -235,18 +223,18 @@ im_Img* im_img_load( const char* filename)
 
 im_Img* im_img_read( im_reader* rdr)
 {
-    struct driver* drv = pick_driver_for_read(rdr);
-    if(!drv) {
+    struct handler* h = pick_handler_for_read(rdr);
+    if(!h) {
         return NULL;
     }
 
 
-    if (drv->read_img) {
-        return drv->read_img(rdr);
+    if (h->read_img) {
+        return h->read_img(rdr);
     }
-    if (drv->read_bundle) {
+    if (h->read_bundle) {
         im_Img* img;
-        im_bundle* b = drv->read_bundle(rdr);
+        im_bundle* b = h->read_bundle(rdr);
         SlotID id = {0};
         if (!b) {
             return NULL;
@@ -270,17 +258,17 @@ im_bundle* im_bundle_load( const char* filename)
 
 im_bundle* im_bundle_read( im_reader* rdr)
 {
-    struct driver* drv = pick_driver_for_read(rdr);
-    if(!drv) {
+    struct handler* h = pick_handler_for_read(rdr);
+    if(!h) {
         return NULL;
     }
 
-    if (drv->read_bundle) {
-        return drv->read_bundle(rdr);
+    if (h->read_bundle) {
+        return h->read_bundle(rdr);
     }
-    if (drv->read_img) {
+    if (h->read_img) {
         im_bundle* b;
-        im_Img* img = drv->read_img(rdr);
+        im_Img* img = h->read_img(rdr);
         if (!img) {
             return NULL;
         }
