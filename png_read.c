@@ -11,12 +11,13 @@ static void end_callback(png_structp png_ptr, png_infop info);
 
 
 static bool is_png(const uint8_t* buf, int nbytes);
+static bool match_png_ext(const char* file_ext);
 static im_Img* read_png_image(im_reader* rdr);
 
-extern bool write_png_image( im_writer* out, im_Img* img );    // from png_write.c
+extern bool write_png_image(im_Img* img, im_writer* out);
 
 struct handler handle_png = {
-    is_png,read_png_image, NULL, NULL, write_png_image, NULL
+    is_png,read_png_image, NULL, match_png_ext, write_png_image, NULL
 };
 
 // struct to track stuff needed during png progressive reading
@@ -25,6 +26,11 @@ struct cbdat {
     im_Img* image;
 };
 
+
+static bool match_png_ext(const char* file_ext)
+{
+    return (istricmp(file_ext,".png")==0);
+}
 
 
 static bool is_png(const uint8_t* buf, int nbytes)

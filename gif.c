@@ -7,12 +7,14 @@
 
 // TODO: check GIFLIB_MAJOR version >= 5
 
-
 static ImErr translate_err( int gif_err_code );
-static bool is_gif(const uint8_t* buf, int nbytes);
-static im_bundle* read_gif_bundle( im_reader* rdr );
 
-struct handler handle_gif = {is_gif, NULL, read_gif_bundle, NULL, NULL, NULL};
+static bool is_gif(const uint8_t* buf, int nbytes);
+static bool match_gif_ext(const char* file_ext);
+static im_bundle* read_gif_bundle( im_reader* rdr );
+static bool write_gif_bundle(im_bundle* bundle, im_writer* out);
+
+struct handler handle_gif = {is_gif, NULL, read_gif_bundle, match_gif_ext, NULL, write_gif_bundle};
 
 static ImErr translate_err( int gif_err_code )
 {
@@ -66,6 +68,11 @@ static bool is_gif(const uint8_t* buf, int nbytes)
         p[3]=='8' &&
         (p[4]=='7' || p[4]=='9') &&
         p[5] == 'a');
+}
+
+static bool match_gif_ext(const char* file_ext)
+{
+    return (istricmp(file_ext,".gif")==0);
 }
 
 
@@ -386,7 +393,7 @@ static int calc_colour_res( int ncolours) {
 }
 
 
-static bool write_gif_bundle( im_writer* out, im_bundle* bundle )
+static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
 {
     GifFileType *gif = NULL;
     int err;
@@ -400,7 +407,10 @@ static bool write_gif_bundle( im_writer* out, im_bundle* bundle )
 
     // TODO: ensure all frames are indexed
 
-    if (num_frames) {
+
+    printf("write gif (%d frames)\n", num_frames);
+
+    if (!num_frames) {
         im_err(ERR_BADPARAM);
         return false;
     }

@@ -4,7 +4,7 @@
 #include <ctype.h>
 
 
-int istrcmp(const char* a, const char* b)
+int istricmp(const char* a, const char* b)
 {
     while(1) {
         if(*a < *b) {

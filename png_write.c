@@ -12,7 +12,7 @@ static bool suss_bit_depth( ImDatatype dt, int *bit_depth);
 static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_Pal *pal);
 
 
-bool write_png_image( im_writer* out, im_Img* img )
+bool write_png_image(im_Img* img, im_writer* out)
 {
     png_structp png_ptr;
     png_infop info_ptr;

@@ -20,27 +20,20 @@ int main( int argc, char* argv[])
     }
 
 
-    im_Img* img = loadPng(argv[1]);
-    if (img==NULL) {
+    im_bundle* bundle = im_bundle_load(argv[1]);
+    if (bundle==NULL) {
         fprintf(stderr,"Poop.\n");
         return 1;
     }
 
 
-    im_writer* out = im_open_file_writer(argv[2]);
-    if (out==NULL) {
-        im_img_free(img);
-        fprintf(stderr,"ERROR opening '%s'\n", argv[2]);
+    if(!im_bundle_save(bundle,argv[2]) ) {
+        fprintf(stderr,"save failed.\n");
         return 1;
     }
 
-    if(!writePng(out,img)) {
-        im_img_free(img);
-        fprintf(stderr,"ERROR writePng() failed\n");
-        return 1;
-    }
 
-    im_img_free(img);
+    im_bundle_free(bundle);
     return 0;
 }
 

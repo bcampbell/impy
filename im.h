@@ -152,6 +152,7 @@ extern im_Img* im_img_load( const char* filename);
 extern im_Img* im_img_read( im_reader* rdr);
 extern im_bundle* im_bundle_load( const char* filename);
 extern im_bundle* im_bundle_read( im_reader* rdr);
+extern bool im_bundle_save( im_bundle* bundle, const char* filename );
 
 /*
 extern bool isPng(const uint8_t* buf, int nbytes);

@@ -3,11 +3,11 @@
 
 #include <stdlib.h>
 #include <string.h> // for memcmp
+#include <stdio.h>
 
 
 
-
-static struct handler *handlers[2] = { &handle_png, &handle_gif, NULL };
+static struct handler *handlers[] = { &handle_png, &handle_gif, NULL };
 
 
 static struct handler* pick_handler_for_read(im_reader* rdr);
@@ -186,6 +186,17 @@ bool im_pal_equal( im_Pal* a, im_Pal* b )
 }
 
 
+static struct handler* pick_handler_by_filename(const char* filename)
+{
+    const char* ext = ext_part(filename);
+    int i;
+    for (i=0; handlers[i] != NULL; ++i) {
+        if (handlers[i]->match_ext(ext)) {
+            return handlers[i];
+        }
+    }
+    return NULL;
+}
 
 static struct handler* pick_handler_for_read(im_reader* rdr)
 {
@@ -289,4 +300,43 @@ im_bundle* im_bundle_read( im_reader* rdr)
     im_err(ERR_UNKNOWN_FILE_TYPE);
     return NULL;
 }
+
+
+bool im_bundle_save( im_bundle* bundle, const char* filename )
+{
+    bool result = false;
+    struct handler* h = pick_handler_by_filename(filename);
+    if( !h ) {
+        im_err(ERR_UNKNOWN_FILE_TYPE);
+        return false;
+    }
+
+    im_writer* out = im_open_file_writer(filename);
+    if( !out) {
+        return false;
+    }
+
+    if( h->write_bundle) {
+        result = h->write_bundle(bundle,out);
+    } else if (h->write_img) {
+        // Just write first frame
+        SlotID id = {0};
+        im_Img* img = im_bundle_get(bundle,id);
+        if( img) { 
+            result = h->write_img(img,out);
+        } else{
+            im_err(ERR_BADPARAM);
+            result = false;
+        }
+    }
+
+    if (im_close_writer(out)) {
+        return false;
+    }
+    return result;
+
+    im_err(ERR_UNSUPPORTED);
+    return false;
+}
+
 
