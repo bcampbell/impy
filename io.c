@@ -1,4 +1,5 @@
 #include "im.h"
+#include "private.h"
 #include <stdio.h>
 
 

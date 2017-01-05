@@ -3,16 +3,16 @@
 #include <stdint.h>
 #include <string.h>
 
-static im_Img* convert_indexed( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
+static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
-static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal);
-static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal);
-static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal);
-static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal);
-static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal);
+static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal);
+static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal);
+static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal);
+static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal);
+static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal);
 
 
-static im_Img* convert_direct( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
+static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
 static void cvt_u8RGB_u8RGB( const uint8_t* src, uint8_t* dest, int w );
 static void cvt_u8RGB_u8RGBA( const uint8_t* src, uint8_t* dest, int w );
@@ -45,7 +45,7 @@ static void cvt_u8ALPHA_u8BGRA( const uint8_t* src, uint8_t* dest, int w );
 static void cvt_u8ALPHA_u8ALPHA( const uint8_t* src, uint8_t* dest, int w );
 
 
-im_Img* im_img_convert( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
+im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
 {
     if (srcImg->Datatype != DT_U8 || destDatatype!=DT_U8) {
         // TODO - type conversions!
@@ -76,12 +76,12 @@ im_Img* im_img_convert( const im_Img* srcImg, ImFmt destFmt, ImDatatype destData
     }
 }
 
-static im_Img* convert_indexed( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
+static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
 {
-    im_Img* destImg = NULL;
+    im_img* destImg = NULL;
 
     // pick line-converter
-    void (*fn)( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal) = NULL;
+    void (*fn)( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal) = NULL;
     switch (destFmt) {
         case FMT_RGB: fn=cvt_u8INDEX_u8RGB; break;
         case FMT_RGBA: fn=cvt_u8INDEX_u8RGBA; break;
@@ -116,7 +116,7 @@ static im_Img* convert_indexed( const im_Img* srcImg, ImFmt destFmt, ImDatatype 
 
 
 
-static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal)
+static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
@@ -144,7 +144,7 @@ static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const i
 }
 
 
-static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal)
+static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
@@ -174,7 +174,7 @@ static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const 
 }
 
 
-static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal)
+static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
@@ -187,7 +187,7 @@ static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const i
     } 
 }
 
-static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal)
+static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
@@ -216,7 +216,7 @@ static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const 
     }
 }
 
-static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const im_Pal* srcPal)
+static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const im_pal* srcPal)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)srcPal->Data;
@@ -242,9 +242,9 @@ static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const
 
 
 /*  */
-static im_Img* convert_direct( const im_Img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
+static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
 {
-    im_Img* destImg = NULL;
+    im_img* destImg = NULL;
 
     // pick line-converter
     void (*fn)( const uint8_t* src, uint8_t* dest, int w) = NULL;

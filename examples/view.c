@@ -95,11 +95,11 @@ int main( int argc, char* argv[])
 }
 
 
-static SDL_Texture* to_texture(im_Img* img)
+static SDL_Texture* to_texture(im_img* img)
 {
     SDL_Surface* surf;
     SDL_Texture *t;
-    im_Img* img2;
+    im_img* img2;
 
     img2 = im_img_convert(img, FMT_RGB, DT_U8);
     if (img2==NULL) {
@@ -131,7 +131,7 @@ bool set_frame(int n)
 {
     SlotID id = {0};
     SDL_Texture* t;
-    im_Img* img;
+    im_img* img;
 
     id.frame = n;
 

@@ -44,9 +44,9 @@ struct readstate {
     im_bundle *bundle;
 };
 
-static im_Img* read_image(struct readstate *state);
+static im_img* read_image(struct readstate *state);
 static bool read_extension(struct readstate *state);
-static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx);
+static im_pal* build_palette(ColorMapObject* cm, int transparent_idx);
 
 
 static int input_fn(GifFileType *gif, GifByteType *buf, int size)
@@ -106,7 +106,7 @@ static im_bundle* read_gif_bundle( im_reader* rdr )
                 goto bailout;
             case IMAGE_DESC_RECORD_TYPE:
                 {
-                    im_Img* img = read_image(&state);
+                    im_img* img = read_image(&state);
                     if (!img) {
                         goto bailout;
                     }
@@ -144,12 +144,12 @@ bailout:
 }
 
 
-static im_Img* read_image( struct readstate* state )
+static im_img* read_image( struct readstate* state )
 {
     GifFileType* gif = state->gif;
     int y;
     int w,h;
-    im_Img *img=NULL;
+    im_img *img=NULL;
 
     if (DGifGetImageDesc(gif) != GIF_OK) {
         // TODO: set error?
@@ -252,9 +252,9 @@ static bool read_extension( struct readstate* state )
     return true;
 }
 
-static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx)
+static im_pal* build_palette(ColorMapObject* cm, int transparent_idx)
 {
-    im_Pal* pal;
+    im_pal* pal;
     uint8_t* dest;
     int i;
     if (transparent_idx==-1) {
@@ -291,6 +291,7 @@ static im_Pal* build_palette(ColorMapObject* cm, int transparent_idx)
  * GIF WRITING
  ***************/
 static bool write_loops(GifFileType*gif, int loops);
+static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal* first_palette, int global_trans);
 
 static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
 {
@@ -299,7 +300,7 @@ static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
 }
 
 
-static ColorMapObject *palette_to_cm( im_Pal* pal, int *trans )
+static ColorMapObject *palette_to_cm( im_pal* pal, int *trans )
 {
 
     ColorMapObject* cm;
@@ -352,7 +353,7 @@ static ColorMapObject *palette_to_cm( im_Pal* pal, int *trans )
 
 // calc extent of all frames in a bundle
 static bool calc_extents( im_bundle* b, int* min_x, int* min_y, int* max_x, int* max_y  ) {
-    im_Img* img;
+    im_img* img;
     int n;
     int num_frames = im_bundle_num_frames(b);
     *min_x = INT_MAX;
@@ -400,7 +401,7 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
 {
     GifFileType *gif = NULL;
     int err;
-    im_Img* first_img;
+    im_img* first_img;
     int num_frames = im_bundle_num_frames(bundle);
     int min_x,min_y, max_x, max_y;
     ColorMapObject* global_cm = NULL;
@@ -508,9 +509,9 @@ static bool write_loops(GifFileType*gif, int loops)
 }
 
 
-static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_Pal* first_palette, int global_trans)
+static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal* first_palette, int global_trans)
 {
-    im_Img* img;
+    im_img* img;
     int y;
     ColorMapObject* frame_cm = NULL;
     int trans = global_trans;

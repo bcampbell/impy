@@ -1,10 +1,11 @@
 #include "im.h"
+#include "private.h"
 
 #include <string.h>
 
 typedef struct slot {
     SlotID id;
-    im_Img* img;
+    im_img* img;
 } slot;
 
 typedef struct im_bundle{
@@ -76,7 +77,7 @@ void im_bundle_free(im_bundle* b)
 {
     int i;
     for(i=0; i<b->length; ++i) {
-        im_Img* img = b->slots[i].img;
+        im_img* img = b->slots[i].img;
         if (img) {
             im_img_free( img );
         }
@@ -90,7 +91,6 @@ static bool grow_bundle( im_bundle* b) {
     int newcap = b->capacity*2;
     slot* newmem = imalloc(newcap * sizeof(slot));
     if (newmem==NULL ) {
-        im_err(ERR_NOMEM);
         return false;
     }
     memcpy( newmem, b->slots, b->length*sizeof(slot));
@@ -113,7 +113,7 @@ static int find_slot(im_bundle* b, const SlotID id)
     return -1;
 }
 
-im_Img* im_bundle_get(im_bundle* b, const SlotID id)
+im_img* im_bundle_get(im_bundle* b, const SlotID id)
 {
     int idx = find_slot(b,id);
     if (idx == -1) {
@@ -123,7 +123,7 @@ im_Img* im_bundle_get(im_bundle* b, const SlotID id)
 }
 
 
-bool im_bundle_set(im_bundle* b, const SlotID id, im_Img* img)
+bool im_bundle_set(im_bundle* b, const SlotID id, im_img* img)
 {
     int idx = find_slot(b,id);
     if (idx != -1) {
@@ -177,7 +177,7 @@ int im_bundle_num_frames(im_bundle* b)
     return b->extents.frame + 1;
 }
 
-im_Img* im_bundle_get_frame(im_bundle* b, int n)
+im_img* im_bundle_get_frame(im_bundle* b, int n)
 {
     SlotID id = {0};
     id.frame = n;

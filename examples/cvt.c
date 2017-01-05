@@ -2,11 +2,6 @@
 #include <stdio.h>
 
 
-im_Img* img = NULL;
-
-void cleanup();
-void show();
-
 int main( int argc, char* argv[])
 {
     int quit = 0;

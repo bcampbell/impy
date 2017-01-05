@@ -12,9 +12,9 @@ static void end_callback(png_structp png_ptr, png_infop info);
 
 static bool is_png(const uint8_t* buf, int nbytes);
 static bool match_png_ext(const char* file_ext);
-static im_Img* read_png_image(im_reader* rdr);
+static im_img* read_png_image(im_reader* rdr);
 
-extern bool write_png_image(im_Img* img, im_writer* out);
+extern bool write_png_image(im_img* img, im_writer* out);
 
 struct handler handle_png = {
     is_png,read_png_image, NULL, match_png_ext, write_png_image, NULL
@@ -23,7 +23,7 @@ struct handler handle_png = {
 // struct to track stuff needed during png progressive reading
 struct cbdat {
     int num_passes;
-    im_Img* image;
+    im_img* image;
 };
 
 
@@ -43,7 +43,7 @@ static bool is_png(const uint8_t* buf, int nbytes)
 }
 
 
-static im_Img* read_png_image(im_reader* rdr)
+static im_img* read_png_image(im_reader* rdr)
 {
     struct cbdat cbDat = {0};
     png_structp png_ptr;
@@ -113,7 +113,7 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
 {
     struct cbdat* cbDat = (struct cbdat*)png_get_progressive_ptr(png_ptr);
 
-    im_Img* img = NULL;
+    im_img* img = NULL;
     png_uint_32 width, height;
     int bitDepth, colourType, interlaceType, compressionType, filterMethod;
     int number_passes;
@@ -190,7 +190,7 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
                 // there is a palette
                 // png palettes are RGB only, so if there is a tRNS chunk, we'll
                 // use it to provide alpha values
-                im_Pal *pal;
+                im_pal *pal;
                 png_bytep trans = NULL;
                 int  num_trans;
                 ImPalFmt palfmt;

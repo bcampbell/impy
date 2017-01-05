@@ -68,9 +68,9 @@ static int bpp(ImFmt fmt, ImDatatype datatype) {
 }
 
 
-im_Img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
+im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
 {
-    im_Img* img;
+    im_img* img;
     int bytesPerPixel;
     int datsize;
 
@@ -116,7 +116,7 @@ im_Img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
     return img;
 }
 
-void im_img_free(im_Img *img)
+void im_img_free(im_img *img)
 {
     if (img->Palette) {
         im_pal_free(img->Palette);
@@ -125,16 +125,16 @@ void im_img_free(im_Img *img)
     ifree(img);
 }
 
-void* im_img_row(im_Img *img, int row)
+void* im_img_row(im_img *img, int row)
 {
     return img->Data + (row * img->Pitch);
 }
 
 
 
-im_Pal* im_pal_new( ImPalFmt fmt, int numColours )
+im_pal* im_pal_new( ImPalFmt fmt, int numColours )
 {
-    im_Pal* pal = imalloc(sizeof(im_Pal));
+    im_pal* pal = imalloc(sizeof(im_pal));
     size_t entsize;
     if (!pal) {
         im_err(ERR_NOMEM);
@@ -157,14 +157,14 @@ im_Pal* im_pal_new( ImPalFmt fmt, int numColours )
     return pal;
 }
 
-void im_pal_free( im_Pal* pal )
+void im_pal_free( im_pal* pal )
 {
     ifree(pal->Data);
     ifree(pal);
 }
 
 // returns true if palettes are equal (same format, same colours)
-bool im_pal_equal( im_Pal* a, im_Pal* b )
+bool im_pal_equal( im_pal* a, im_pal* b )
 {
     size_t nbytes;
 
@@ -224,15 +224,15 @@ static struct handler* pick_handler_for_read(im_reader* rdr)
 }
 
 
-im_Img* im_img_load( const char* filename)
+im_img* im_img_load( const char* filename)
 {
     im_reader* rdr = im_open_file_reader(filename);
-    im_Img* img = im_img_read(rdr);
+    im_img* img = im_img_read(rdr);
     im_close_reader(rdr);
     return img;
 }
 
-im_Img* im_img_read( im_reader* rdr)
+im_img* im_img_read( im_reader* rdr)
 {
     struct handler* h = pick_handler_for_read(rdr);
     if(!h) {
@@ -244,7 +244,7 @@ im_Img* im_img_read( im_reader* rdr)
         return h->read_img(rdr);
     }
     if (h->read_bundle) {
-        im_Img* img;
+        im_img* img;
         im_bundle* b = h->read_bundle(rdr);
         SlotID id = {0};
         if (!b) {
@@ -279,7 +279,7 @@ im_bundle* im_bundle_read( im_reader* rdr)
     }
     if (h->read_img) {
         im_bundle* b;
-        im_Img* img = h->read_img(rdr);
+        im_img* img = h->read_img(rdr);
         if (!img) {
             return NULL;
         }
@@ -321,7 +321,7 @@ bool im_bundle_save( im_bundle* bundle, const char* filename )
     } else if (h->write_img) {
         // Just write first frame
         SlotID id = {0};
-        im_Img* img = im_bundle_get(bundle,id);
+        im_img* img = im_bundle_get(bundle,id);
         if( img) { 
             result = h->write_img(img,out);
         } else{

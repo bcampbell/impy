@@ -9,10 +9,10 @@ static void custom_write(png_structp png_ptr,
 static void custom_flush(png_structp png_ptr);
 static bool suss_color_type( ImFmt fmt, int* color_type );
 static bool suss_bit_depth( ImDatatype dt, int *bit_depth);
-static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_Pal *pal);
+static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_pal *pal);
 
 
-bool write_png_image(im_Img* img, im_writer* out)
+bool write_png_image(im_img* img, im_writer* out)
 {
     png_structp png_ptr;
     png_infop info_ptr;
@@ -157,7 +157,7 @@ static bool suss_bit_depth( ImDatatype dt, int *bit_depth)
 
 
 // return false if anything unsupported or otherwise odd
-static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_Pal *pal)
+static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_pal *pal)
 {
     png_color rgb[256];
     png_byte trans[256];
