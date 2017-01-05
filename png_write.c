@@ -12,14 +12,14 @@ static bool suss_bit_depth( ImDatatype dt, int *bit_depth);
 static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_pal *pal);
 
 
-bool write_png_image(im_img* img, im_writer* out)
+bool write_png_image(im_img* img, im_writer* out, ImErr* err)
 {
     png_structp png_ptr;
     png_infop info_ptr;
 
     png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,NULL,NULL);
     if (!png_ptr) {
-        im_err(ERR_NOMEM);
+        *err = ERR_NOMEM;
         return false;
     }
 
@@ -27,7 +27,7 @@ bool write_png_image(im_img* img, im_writer* out)
     if (!info_ptr)
     {
        png_destroy_write_struct(&png_ptr, NULL);
-       im_err(ERR_NOMEM);
+       *err = ERR_NOMEM;
        return false;
     }
 
@@ -35,7 +35,8 @@ bool write_png_image(im_img* img, im_writer* out)
     if (setjmp(png_jmpbuf(png_ptr)))
     {
        png_destroy_write_struct(&png_ptr, &info_ptr);
-       // TODO: if no im_err set, set a generic error
+       // TODO: check error in writer, else post extlib error
+       *err = ERR_EXTLIB;
        return false;
     }
 
@@ -52,12 +53,12 @@ bool write_png_image(im_img* img, im_writer* out)
         height = img->Height;
 
         if (!suss_color_type(img->Format, &color_type)) {
-            im_err(ERR_UNSUPPORTED);
+            *err = ERR_UNSUPPORTED;
             goto bailout;
         }
 
         if (!suss_bit_depth(img->Datatype, &bit_depth)) {
-            im_err(ERR_UNSUPPORTED);
+            *err = ERR_UNSUPPORTED;
             goto bailout;
         }
 
@@ -72,7 +73,7 @@ bool write_png_image(im_img* img, im_writer* out)
         if (img->Format == FMT_COLOUR_INDEX)
         {
             if( !plonk_palette( png_ptr, info_ptr, img->Palette) ) {
-                im_err(ERR_UNSUPPORTED);
+                *err = ERR_UNSUPPORTED;
                 goto bailout;
             }
         }

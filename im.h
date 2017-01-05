@@ -41,6 +41,7 @@ typedef enum ImErr {
     ERR_NOCONV,         // unsupported pixel conversion (eg rgb->indexed)
     ERR_FILE,           // stdlib file error, check errno
     ERR_UNKNOWN_FILE_TYPE,
+    ERR_EXTLIB,         // any unspecified error in external lib
 } ImErr;
 
 typedef enum ImPalFmt {
@@ -99,7 +100,7 @@ typedef struct SlotID {
 
 // open a file for reading (binary mode)
 // the returned reader uses stdio (fopen, fread etc...)
-extern im_reader* im_open_file_reader( const char* filename);
+extern im_reader* im_open_file_reader( const char* filename, ImErr* err);
 
 // TODO: memory-based reader
 //extern im_reader* im_open_mem_reader( const void* data, size_t nbytes );
@@ -131,7 +132,7 @@ typedef struct im_writer {
 
 // open a file for writing
 // (backed by fopen/fwrite etc)
-extern im_writer* im_open_file_writer( const char* filename);
+extern im_writer* im_open_file_writer( const char* filename, ImErr* err);
 //extern im_writer* im_open_mem_writer( void* buf, size_t buf_size );
 
 // close and free writer returns error code...
@@ -156,15 +157,13 @@ extern im_pal* im_pal_new( ImPalFmt fmt, int numColours );
 extern void im_pal_free( im_pal* pal );
 extern bool im_pal_equal( im_pal* a, im_pal* b );
 
-extern void im_err(ImErr err);
 
 
-
-extern im_img* im_img_load( const char* filename);
-extern im_img* im_img_read( im_reader* rdr);
-extern im_bundle* im_bundle_load( const char* filename);
-extern im_bundle* im_bundle_read( im_reader* rdr);
-extern bool im_bundle_save( im_bundle* bundle, const char* filename );
+extern im_img* im_img_load( const char* filename, ImErr* err);
+extern im_img* im_img_read( im_reader* rdr, ImErr* err);
+extern im_bundle* im_bundle_load( const char* filename, ImErr* err);
+extern im_bundle* im_bundle_read( im_reader* rdr, ImErr* err);
+extern bool im_bundle_save( im_bundle* bundle, const char* filename, ImErr* err);
 
 // create a new (empty) bundle. NULL if out of memory.
 extern im_bundle* im_bundle_new();

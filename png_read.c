@@ -12,9 +12,9 @@ static void end_callback(png_structp png_ptr, png_infop info);
 
 static bool is_png(const uint8_t* buf, int nbytes);
 static bool match_png_ext(const char* file_ext);
-static im_img* read_png_image(im_reader* rdr);
+static im_img* read_png_image(im_reader* rdr, ImErr *err);
 
-extern bool write_png_image(im_img* img, im_writer* out);
+extern bool write_png_image(im_img* img, im_writer* out, ImErr *err);
 
 struct handler handle_png = {
     is_png,read_png_image, NULL, match_png_ext, write_png_image, NULL
@@ -22,6 +22,7 @@ struct handler handle_png = {
 
 // struct to track stuff needed during png progressive reading
 struct cbdat {
+    ImErr err;
     int num_passes;
     im_img* image;
 };
@@ -43,15 +44,15 @@ static bool is_png(const uint8_t* buf, int nbytes)
 }
 
 
-static im_img* read_png_image(im_reader* rdr)
+static im_img* read_png_image(im_reader* rdr, ImErr *err)
 {
-    struct cbdat cbDat = {0};
+    struct cbdat cbDat = {ERR_NONE,0,NULL};
     png_structp png_ptr;
     png_infop info_ptr;
 
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL,NULL,NULL);
     if (!png_ptr) {
-        im_err(ERR_NOMEM);
+        *err = ERR_NOMEM;
         return NULL;
     }
 
@@ -60,7 +61,7 @@ static im_img* read_png_image(im_reader* rdr)
     if (!info_ptr)
     {
        png_destroy_read_struct(&png_ptr, NULL, NULL);
-       im_err(ERR_NOMEM);
+       *err = ERR_NOMEM;
        return NULL;
     }
 
@@ -69,12 +70,15 @@ static im_img* read_png_image(im_reader* rdr)
 
     if (setjmp(png_jmpbuf(png_ptr)))
     {
-       png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-       if (cbDat.image) {
-           im_img_free(cbDat.image);
-       }
-       // TODO: if no im_err set, set a generic error
-       return NULL;
+        png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
+        if (cbDat.image) {
+            im_img_free(cbDat.image);
+        }
+        *err = cbDat.err;
+        if (*err == ERR_NONE) {
+            *err = ERR_EXTLIB;
+        }
+        return NULL;
     }
 
 //   png_set_sig_bytes(png_ptr, cookieRead);
@@ -95,6 +99,7 @@ static im_img* read_png_image(im_reader* rdr)
                 break;
             }
             // an error has occurred
+            // TODO: set error from rdr
             png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
             if (cbDat.image) {
                im_img_free(cbDat.image);
@@ -162,7 +167,7 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
             case PNG_COLOR_TYPE_GRAY:
             case PNG_COLOR_TYPE_GRAY_ALPHA:
             default:
-                im_err(ERR_UNSUPPORTED);
+                cbDat->err = ERR_UNSUPPORTED;
                 png_error(png_ptr, "unsupported color type");
         }
 
@@ -171,12 +176,13 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
         } else if (bitDepth==16) {
             dt = DT_U16;
         } else {
-            im_err(ERR_UNSUPPORTED);
+            cbDat->err = ERR_UNSUPPORTED;
             png_error(png_ptr, "unsupported color type");
         }
         
         cbDat->image = im_img_new(width,height,1,fmt,dt);
         if (cbDat->image == NULL) {
+            cbDat->err = ERR_NOMEM;
             png_error(png_ptr, "im_img_new() failed");
         }
 
@@ -210,6 +216,7 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
 
                 pal = im_pal_new(palfmt, num_colours);
                 if (!pal) {
+                    cbDat->err = ERR_NOMEM;
                     png_error(png_ptr, "im_pal_new() failed");
                 }
                 cbDat->image->Palette = pal;

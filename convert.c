@@ -51,12 +51,10 @@ im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destData
         // TODO - type conversions!
         // maybe just fmtconvert to same type, then use a second
         // pass to convert the type?
-        im_err(ERR_NOCONV);
         return NULL;
     }
     if(srcImg->Format!=FMT_COLOUR_INDEX && destFmt==FMT_COLOUR_INDEX) {
         // no unsolicited quantising, thankyouverymuch
-        im_err(ERR_NOCONV);
         return NULL;
     }
 
@@ -71,7 +69,6 @@ im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destData
         case FMT_ALPHA:
             return convert_direct(srcImg, destFmt, destDatatype);
         default:
-            im_err(ERR_NOCONV);
             return NULL;
     }
 }
@@ -92,7 +89,6 @@ static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype 
         case FMT_LUMINANCE: break;  //TODO
     }
     if (fn==NULL) {
-        im_err(ERR_NOCONV);
         return NULL;
     }
 
@@ -307,7 +303,6 @@ static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype d
 
     }
     if (fn==NULL) {
-        im_err(ERR_NOCONV);
         return NULL;
     }
 

@@ -2,24 +2,27 @@
 #define PRIVATE_H
 
 // private stuff, internal to library
+#include "im.h"
 
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
 
+#if 0
 typedef struct im_img im_img;
 typedef struct im_reader im_reader;
 typedef struct im_writer im_writer;
 typedef struct im_bundle im_bundle;
+#endif
 
 struct handler {
     bool (*match_cookie)(const uint8_t* buf, int nbytes);
-    im_img* (*read_img)( im_reader* rdr);
-    im_bundle* (*read_bundle)( im_reader* rdr);
+    im_img* (*read_img)( im_reader* rdr, ImErr *err);
+    im_bundle* (*read_bundle)( im_reader* rdr, ImErr *err);
 
     bool (*match_ext)(const char* file_extension);
-    bool (*write_img)(im_img* img, im_writer* out);
-    bool (*write_bundle)(im_bundle* bundle, im_writer* out);
+    bool (*write_img)(im_img* img, im_writer* out, ImErr *err);
+    bool (*write_bundle)(im_bundle* bundle, im_writer* out, ImErr *err);
 
     // TODO: add a suitable() fn to check formats, palettes, anim etc...
 };

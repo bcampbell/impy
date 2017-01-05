@@ -11,8 +11,8 @@ static ImErr translate_err( int gif_err_code );
 
 static bool is_gif(const uint8_t* buf, int nbytes);
 static bool match_gif_ext(const char* file_ext);
-static im_bundle* read_gif_bundle( im_reader* rdr );
-static bool write_gif_bundle(im_bundle* bundle, im_writer* out);
+static im_bundle* read_gif_bundle( im_reader* rdr, ImErr* err );
+static bool write_gif_bundle(im_bundle* bundle, im_writer* out, ImErr* err);
 
 struct handler handle_gif = {is_gif, NULL, read_gif_bundle, match_gif_ext, NULL, write_gif_bundle};
 
@@ -78,31 +78,31 @@ static bool match_gif_ext(const char* file_ext)
 }
 
 
-static im_bundle* read_gif_bundle( im_reader* rdr )
+static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
 {
     struct readstate state;
-    int err;
+    int giferr;
     bool done=false;
     SlotID frame = {0};
 
     state.gcb_valid = false;
-    state.gif = DGifOpen( (void*)rdr, input_fn, &err);
+    state.gif = DGifOpen( (void*)rdr, input_fn, &giferr);
     state.bundle = im_bundle_new();
     if (!state.gif) {
-        im_err(translate_err(err));
+        *err = translate_err(giferr);
         goto bailout;
     }
 
     while(!done) {
         GifRecordType rec_type;
         if (DGifGetRecordType(state.gif, &rec_type) != GIF_OK) {
-            im_err(ERR_MALFORMED);
+            *err = ERR_MALFORMED;
             goto bailout;
         }
         switch(rec_type) {
             case UNDEFINED_RECORD_TYPE:
             case SCREEN_DESC_RECORD_TYPE:
-                im_err(ERR_MALFORMED);
+                *err = ERR_MALFORMED;
                 goto bailout;
             case IMAGE_DESC_RECORD_TYPE:
                 {
@@ -127,9 +127,9 @@ static im_bundle* read_gif_bundle( im_reader* rdr )
         }
     }
 
-    if(DGifCloseFile(state.gif, &err)!=GIF_OK) {
+    if(DGifCloseFile(state.gif, &giferr)!=GIF_OK) {
         state.gif = NULL;
-        im_err(translate_err(err));
+        *err = translate_err(giferr);
         goto bailout;
     }
 
@@ -137,7 +137,7 @@ static im_bundle* read_gif_bundle( im_reader* rdr )
 
 bailout:
     if (state.gif) {
-        DGifCloseFile(state.gif, &err);
+        DGifCloseFile(state.gif, &giferr);
     }
     im_bundle_free(state.bundle);
     return NULL;
@@ -291,7 +291,7 @@ static im_pal* build_palette(ColorMapObject* cm, int transparent_idx)
  * GIF WRITING
  ***************/
 static bool write_loops(GifFileType*gif, int loops);
-static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal* first_palette, int global_trans);
+static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal* first_palette, int global_trans, ImErr* err);
 
 static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
 {
@@ -311,7 +311,6 @@ static ColorMapObject *palette_to_cm( im_pal* pal, int *trans )
     // TODO:  GifMakeMapObject fails if colour count is not power-of-two.
     cm = GifMakeMapObject( pal->NumColours, NULL );
     if (!cm) {
-        im_err(ERR_NOMEM);
         return NULL;
     }
     
@@ -343,7 +342,6 @@ static ColorMapObject *palette_to_cm( im_pal* pal, int *trans )
             }
             break;
         default:
-            im_err(ERR_UNSUPPORTED);
             GifFreeMapObject(cm);
             return NULL;
     }
@@ -364,7 +362,6 @@ static bool calc_extents( im_bundle* b, int* min_x, int* min_y, int* max_x, int*
     for (n=0; n<num_frames; ++n) {
         img = im_bundle_get_frame(b,n);
         if (!img) {
-            im_err(ERR_BADPARAM);
             return false;
         }
         if( img->XOffset < *min_x) {
@@ -397,10 +394,10 @@ static int calc_colour_res( int ncolours) {
 }
 
 
-static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
+static bool write_gif_bundle(im_bundle* bundle, im_writer* out, ImErr *err)
 {
     GifFileType *gif = NULL;
-    int err;
+    int giferr;
     im_img* first_img;
     int num_frames = im_bundle_num_frames(bundle);
     int min_x,min_y, max_x, max_y;
@@ -411,7 +408,7 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
     // TODO: ensure all frames are indexed
 
     if (!num_frames) {
-        im_err(ERR_BADPARAM);
+        *err = ERR_BADPARAM;
         return false;
     }
 
@@ -423,18 +420,19 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
     // Could be a more optimal palette, but this seems a reasonable way to go.
     first_img = im_bundle_get_frame(bundle, 0);
     if (!first_img) {
-        im_err(ERR_BADPARAM);
+        *err = ERR_BADPARAM;
         return false;
     }
     global_cm = palette_to_cm( first_img->Palette, &global_trans);
     if (!global_cm) {
+        *err = ERR_NOMEM;
         return false;
     }
 
 
-    gif = EGifOpen((void*)out, output_fn, &err);
+    gif = EGifOpen((void*)out, output_fn, &giferr);
     if (!gif) {
-        im_err(translate_err(err));
+        *err = translate_err(giferr);
         goto bailout;
     }
 
@@ -448,7 +446,7 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
         0,  // (bgcolor)
         global_cm))
     {
-        im_err(translate_err(gif->Error));
+        *err = translate_err(gif->Error);
         goto bailout;
     }
 
@@ -456,19 +454,20 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out)
     if (num_frames>1) {
         // TODO: allow non-infinite looping?
         if(!write_loops(gif,0)) {
+            *err = translate_err(gif->Error);
             goto bailout;
         }
     }
 
     for( frame=0; frame<num_frames; ++frame) {
-        if (!write_frame(gif, bundle, frame, first_img->Palette, global_trans ) ) {
+        if (!write_frame(gif, bundle, frame, first_img->Palette, global_trans, err ) ) {
             goto bailout;
         }
     }
 
     GifFreeMapObject(global_cm);
-    if( GIF_OK != EGifCloseFile(gif, &err) ) {
-        im_err(translate_err(err));
+    if( GIF_OK != EGifCloseFile(gif, &giferr) ) {
+        *err = translate_err(giferr);
         gif = NULL;
         goto bailout;
     }
@@ -479,7 +478,7 @@ bailout:
         GifFreeMapObject(global_cm);
     }
     if (gif) {
-        EGifCloseFile(gif, &err);
+        EGifCloseFile(gif, &giferr);
     }
     return false;
 }
@@ -490,26 +489,22 @@ static bool write_loops(GifFileType*gif, int loops)
     uint8_t blk1[11] = { 'N','E','T','S','C','A','P','E','2','.','0' };
     uint8_t blk2[3] = { 0x01, (loops&0xff), ((loops>>8) & 0xff)};
     if(EGifPutExtensionLeader(gif, APPLICATION_EXT_FUNC_CODE) != GIF_OK) {
-        im_err(translate_err(gif->Error));
         return false;
     }
     if(EGifPutExtensionBlock(gif, sizeof(blk1), blk1) != GIF_OK) {
-        im_err(translate_err(gif->Error));
         return false;
     }
     if(EGifPutExtensionBlock(gif, sizeof(blk2), blk2) != GIF_OK) {
-        im_err(translate_err(gif->Error));
         return false;
     }
     if(EGifPutExtensionTrailer(gif) != GIF_OK) {
-        im_err(translate_err(gif->Error));
         return false;
     }
     return true;
 }
 
 
-static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal* first_palette, int global_trans)
+static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal* first_palette, int global_trans, ImErr* err)
 {
     im_img* img;
     int y;
@@ -518,17 +513,17 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal*
 
     img = im_bundle_get_frame(bundle,frame);
     if(!img) {
-        im_err(ERR_BADPARAM);
+        *err = ERR_BADPARAM;
         return false;
     }
 
     // sanity checking
     if( img->Format != FMT_COLOUR_INDEX ) {
-        im_err(ERR_UNSUPPORTED);
+        *err = ERR_UNSUPPORTED;
         goto bailout;
     }
     if( !img->Palette ) {
-        im_err(ERR_BADPARAM);
+        *err = ERR_BADPARAM;
         goto bailout;
     }
 
@@ -537,6 +532,7 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal*
     if( !im_pal_equal(first_palette, img->Palette)) {
         frame_cm = palette_to_cm(img->Palette, &trans);
         if( !frame_cm) {
+            *err = ERR_NOMEM;
             return false;
         }
     }
@@ -553,7 +549,7 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal*
         EGifGCBToExtension(&gcb, (GifByteType*)gcb_buf);
 
         if( EGifPutExtension(gif, GRAPHICS_EXT_FUNC_CODE, 4, gcb_buf) != GIF_OK) {
-            im_err(translate_err(gif->Error));
+            *err = translate_err(gif->Error);
             return false;
         }
     }
@@ -569,13 +565,13 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal*
         if( frame_cm) {
             GifFreeMapObject(frame_cm);
         }
-        im_err(translate_err(gif->Error));
+        *err = translate_err(gif->Error);
         goto bailout;
     }
 
     for (y=0; y<img->Height; ++y) {
         if( GIF_OK !=EGifPutLine( gif, (GifPixelType*)im_img_row(img,y), img->Width)) {
-            im_err(translate_err(gif->Error));
+            *err = translate_err(gif->Error);
             goto bailout;
         }
     }

@@ -23,14 +23,6 @@ void ifree(void* ptr)
 }
 
 
-static ImErr errCode = ERR_NONE;
-
-
-void im_err(ImErr err)
-{
-    errCode = err;
-}
-
 // calc bytes per pixel
 static int bpp(ImFmt fmt, ImDatatype datatype) {
     int n=0;
@@ -75,13 +67,11 @@ im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
     int datsize;
 
     if( w<1 || h<1 || d<1 ) {
-        im_err(ERR_BADPARAM);
         return NULL;
     }
 
     bytesPerPixel = bpp(fmt,datatype);
     if(bytesPerPixel==0) {
-        im_err(ERR_BADPARAM);
         return NULL;
     }
 
@@ -90,7 +80,6 @@ im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
 
     img = imalloc(datsize);
     if (img==NULL) {
-        im_err(ERR_NOMEM);
         return 0;
     }
 
@@ -107,7 +96,6 @@ im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
     img->Pitch = img->BytesPerPixel * img->Width;
     img->Data = imalloc(img->Height * img->Pitch * img->Depth);
     if (!img->Data) {
-        im_err(ERR_NOMEM);
         ifree(img);
         return NULL;
     }
@@ -137,7 +125,6 @@ im_pal* im_pal_new( ImPalFmt fmt, int numColours )
     im_pal* pal = imalloc(sizeof(im_pal));
     size_t entsize;
     if (!pal) {
-        im_err(ERR_NOMEM);
         return NULL;
     }
     pal->Format = fmt;
@@ -151,7 +138,6 @@ im_pal* im_pal_new( ImPalFmt fmt, int numColours )
     pal->Data = imalloc(numColours * entsize);
     if (!pal->Data) {
         ifree(pal);
-        im_err(ERR_NOMEM);
         return NULL;
     }
     return pal;
@@ -204,13 +190,11 @@ static struct handler* pick_handler_for_read(im_reader* rdr)
 
     uint8_t cookie[8];
     if (im_read(rdr, cookie, sizeof(cookie)) != sizeof(cookie)) {
-        im_err(ERR_FILE);
         return NULL;
     }
 
     // reset reader
     if( im_seek(rdr, 0, IM_SEEK_SET) != 0 ) {
-        im_err(ERR_FILE);
         return NULL;
     }
     for (i=0; handlers[i] != NULL; ++i) {
@@ -219,33 +203,36 @@ static struct handler* pick_handler_for_read(im_reader* rdr)
         }
     }
 
-    im_err(ERR_UNKNOWN_FILE_TYPE);
     return NULL;
 }
 
 
-im_img* im_img_load( const char* filename)
+im_img* im_img_load( const char* filename, ImErr* err)
 {
-    im_reader* rdr = im_open_file_reader(filename);
-    im_img* img = im_img_read(rdr);
+    im_reader* rdr = im_open_file_reader(filename,err);
+    if (!rdr) {
+        return NULL;
+    }
+    im_img* img = im_img_read(rdr,err);
     im_close_reader(rdr);
     return img;
 }
 
-im_img* im_img_read( im_reader* rdr)
+im_img* im_img_read( im_reader* rdr, ImErr* err)
 {
     struct handler* h = pick_handler_for_read(rdr);
     if(!h) {
+        *err = ERR_UNKNOWN_FILE_TYPE;
         return NULL;
     }
 
 
     if (h->read_img) {
-        return h->read_img(rdr);
+        return h->read_img(rdr, err);
     }
     if (h->read_bundle) {
         im_img* img;
-        im_bundle* b = h->read_bundle(rdr);
+        im_bundle* b = h->read_bundle(rdr, err);
         SlotID id = {0};
         if (!b) {
             return NULL;
@@ -255,31 +242,35 @@ im_img* im_img_read( im_reader* rdr)
         return img;
     }
 
-    im_err(ERR_UNKNOWN_FILE_TYPE);
+    *err = ERR_UNKNOWN_FILE_TYPE;
     return NULL;
 }
 
-im_bundle* im_bundle_load( const char* filename)
+im_bundle* im_bundle_load( const char* filename, ImErr* err)
 {
-    im_reader* rdr = im_open_file_reader(filename);
-    im_bundle* b = im_bundle_read(rdr);
+    im_reader* rdr = im_open_file_reader(filename, err);
+    if(!rdr) {
+        return NULL;
+    }
+    im_bundle* b = im_bundle_read(rdr, err);
     im_close_reader(rdr);
     return b;
 }
 
-im_bundle* im_bundle_read( im_reader* rdr)
+im_bundle* im_bundle_read( im_reader* rdr, ImErr* err)
 {
     struct handler* h = pick_handler_for_read(rdr);
     if(!h) {
+        *err = ERR_UNKNOWN_FILE_TYPE;
         return NULL;
     }
 
     if (h->read_bundle) {
-        return h->read_bundle(rdr);
+        return h->read_bundle(rdr,err);
     }
     if (h->read_img) {
         im_bundle* b;
-        im_img* img = h->read_img(rdr);
+        im_img* img = h->read_img(rdr,err);
         if (!img) {
             return NULL;
         }
@@ -292,40 +283,41 @@ im_bundle* im_bundle_read( im_reader* rdr)
         if (!im_bundle_set(b, id, img)) {
             im_img_free(img);
             im_bundle_free(b);
+            *err = ERR_NOMEM;
             return NULL;
         }
         return b;
     }
 
-    im_err(ERR_UNKNOWN_FILE_TYPE);
+    *err = ERR_UNKNOWN_FILE_TYPE;
     return NULL;
 }
 
 
-bool im_bundle_save( im_bundle* bundle, const char* filename )
+bool im_bundle_save( im_bundle* bundle, const char* filename, ImErr* err )
 {
     bool result = false;
     struct handler* h = pick_handler_by_filename(filename);
     if( !h ) {
-        im_err(ERR_UNKNOWN_FILE_TYPE);
+        *err = ERR_UNKNOWN_FILE_TYPE;
         return false;
     }
 
-    im_writer* out = im_open_file_writer(filename);
+    im_writer* out = im_open_file_writer(filename,err);
     if( !out) {
         return false;
     }
 
     if( h->write_bundle) {
-        result = h->write_bundle(bundle,out);
+        result = h->write_bundle(bundle,out,err);
     } else if (h->write_img) {
         // Just write first frame
         SlotID id = {0};
         im_img* img = im_bundle_get(bundle,id);
         if( img) { 
-            result = h->write_img(img,out);
+            result = h->write_img(img,out,err);
         } else{
-            im_err(ERR_BADPARAM);
+            *err = ERR_BADPARAM;    // bundle has no frame 0
             result = false;
         }
     }
@@ -334,9 +326,6 @@ bool im_bundle_save( im_bundle* bundle, const char* filename )
         return false;
     }
     return result;
-
-    im_err(ERR_UNSUPPORTED);
-    return false;
 }
 
 

@@ -21,6 +21,7 @@ void next_frame();
 int main( int argc, char* argv[])
 {
     int quit = 0;
+    ImErr err;
     if (argc<=1) {
         return 0;
     }
@@ -44,9 +45,9 @@ int main( int argc, char* argv[])
     	return 1;
     }
 
-    bundle = im_bundle_load(argv[1]);
+    bundle = im_bundle_load(argv[1], &err);
     if (bundle==NULL) {
-        fprintf(stderr,"load failed.\n");
+        fprintf(stderr,"load failed (err=%d)\n",err);
         cleanup();
         return 1;
     }
