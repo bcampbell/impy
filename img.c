@@ -159,17 +159,20 @@ static bool image_pal_set( im_img* img, ImPalFmt fmt, int ncolours, const void* 
     }
     if( foo->pal_fmt != fmt || foo->pal_num_colours != ncolours ) {
         // reallocate
-
-        uint8_t* newdata = imalloc(ncolours*colsize);
-        if (!newdata) {
-            return false;
+        uint8_t* newdata = NULL;
+        if(ncolours > 0) {
+            newdata = imalloc(ncolours*colsize);
+            if (!newdata) {
+                return false;
+            }
         }
         if (foo->pal_data) {
             ifree(foo->pal_data);
         }
         foo->pal_data = newdata;
+        foo->pal_fmt = fmt;
+        foo->pal_num_colours = ncolours;
     }
-    foo->pal_fmt = fmt;
 
     if( data ) {
         im_img_pal_write( img, 0, ncolours, fmt, data );

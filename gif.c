@@ -265,6 +265,7 @@ static bool apply_palette(im_img* img, ColorMapObject* cm, int transparent_idx)
 
     // GifColorType doesn't seem to be byte-packed, so pack it ourselves
     // (and add alpha while we're at it)
+    dest = buf;
     for (i=0; i<cm->ColorCount; ++i) {
         GifColorType *src = &cm->Colors[i];
         *dest++ = src->Red;
