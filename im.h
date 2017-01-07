@@ -51,35 +51,6 @@ typedef enum ImPalFmt {
 
 typedef struct im_img {} im_img;
 
-#if 0
-typedef struct im_pal {
-    void* Data;
-    ImPalFmt Format;
-    int NumColours;
-} im_pal;
-
-
-typedef struct im_img {
-    int Width;
-    int Height;
-    int Depth;
-
-    int XOffset;
-    int YOffset;
-
-    ImFmt Format;     // FMT_*
-    ImDatatype Datatype;     // DT_*
-    int BytesPerPixel;
-
-    int Pitch;  // bytes per line
-
-    void* Data;
-    im_pal* Palette;
-
-    // disposal, frame duration, other metadata...
-} im_img;
-
-#endif
 
 
 // interface of an im_img implementation.
@@ -106,6 +77,9 @@ typedef struct im_img_impl {
     int (*pal_num_colours)(const im_img* img);
     ImPalFmt (*pal_fmt)(const im_img* img);
 
+    int (*x_offset)(const im_img*);
+    int (*y_offset)(const im_img*);
+    void (*set_offset)(im_img*, int, int);
 } im_img_impl;
 
 
@@ -237,7 +211,15 @@ static inline ImPalFmt im_img_pal_fmt(const im_img* img)
 static inline void* im_img_pal_data(const im_img* img)
     { return im_current_img_impl->pal_data( img ); }
 
+extern bool im_img_pal_equal(const im_img* a, const im_img* b);
 
+// access to image offset
+static inline int im_img_x_offset(const im_img* img)
+    { return im_current_img_impl->x_offset(img); }
+static inline int im_img_y_offset(const im_img* img)
+    { return im_current_img_impl->y_offset(img); }
+static inline void im_img_set_offset(im_img* img, int x, int y)
+    { im_current_img_impl->set_offset(img,x,y); }
 
 
 

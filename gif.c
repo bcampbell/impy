@@ -46,7 +46,7 @@ struct readstate {
 
 static im_img* read_image(struct readstate *state);
 static bool read_extension(struct readstate *state);
-static im_pal* build_palette(ColorMapObject* cm, int transparent_idx);
+static bool apply_palette(im_img* img, ColorMapObject* cm, int transparent_idx);
 
 
 static int input_fn(GifFileType *gif, GifByteType *buf, int size)
@@ -191,13 +191,17 @@ static im_img* read_image( struct readstate* state )
     }
 
     // TODO: set GCB stuff here - delay, disposition etc
-    //
+    // TODO: pass in transparent colour to apply_palette!
     if (gif->Image.ColorMap) {
-        img->Palette = build_palette(gif->Image.ColorMap,-1);
+        if (!apply_palette(img, gif->Image.ColorMap,-1)) {
+            goto bailout;
+        }
     } else if (gif->SColorMap) {
-        img->Palette = build_palette(gif->SColorMap,-1);
+        if (!apply_palette(img, gif->SColorMap,-1)) {
+            goto bailout;
+        }
     } else {
-        // TODO: it's valid (but bonkers) for gif files to have no palette
+        // it's valid (but bonkers) for gif files to have no palette
     }
 
     return img;
@@ -252,46 +256,37 @@ static bool read_extension( struct readstate* state )
     return true;
 }
 
-static im_pal* build_palette(ColorMapObject* cm, int transparent_idx)
+static bool apply_palette(im_img* img, ColorMapObject* cm, int transparent_idx)
 {
-    im_pal* pal;
+    uint8_t buf[256*4];
     uint8_t* dest;
     int i;
-    if (transparent_idx==-1) {
-        pal = im_pal_new( PALFMT_RGB, cm->ColorCount );
-        if( !pal) {
-            return NULL;
-        }
-        dest = pal->Data;
-        for (i=0; i<cm->ColorCount; ++i) {
-            GifColorType *src = &cm->Colors[i];
-            *dest++ = src->Red;
-            *dest++ = src->Green;
-            *dest++ = src->Blue;
-        }
-    } else {
-        pal = im_pal_new( PALFMT_RGBA, cm->ColorCount );
-        if( !pal) {
-            return NULL;
-        }
-        dest = pal->Data;
-        for (i=0; i<cm->ColorCount; ++i) {
-            GifColorType *src = &cm->Colors[i];
-            *dest++ = src->Red;
-            *dest++ = src->Green;
-            *dest++ = src->Blue;
-            *dest++ = (transparent_idx == i) ? 0 : 255;
-        }
+    ImPalFmt palfmt;
+
+    // GifColorType doesn't seem to be byte-packed, so pack it ourselves
+    // (and add alpha while we're at it)
+    for (i=0; i<cm->ColorCount; ++i) {
+        GifColorType *src = &cm->Colors[i];
+        *dest++ = src->Red;
+        *dest++ = src->Green;
+        *dest++ = src->Blue;
+        *dest++ = (transparent_idx == i) ? 0 : 255;
     }
-    return pal;
+
+    palfmt = (transparent_idx==-1) ? PALFMT_RGB:PALFMT_RGBA;
+    if( !im_img_pal_set( img, palfmt, cm->ColorCount, NULL )) {
+        return false;
+    }
+    return im_img_pal_write( img, 0, cm->ColorCount, PALFMT_RGBA, buf);
 }
+
 
 
 /***************
  * GIF WRITING
  ***************/
 static bool write_loops(GifFileType*gif, int loops);
-static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal* first_palette, int global_trans, ImErr* err);
+static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_img* first_frame, int global_trans, ImErr* err);
 
 static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
 {
@@ -300,26 +295,27 @@ static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
 }
 
 
-static ColorMapObject *palette_to_cm( im_pal* pal, int *trans )
+static ColorMapObject *palette_to_cm( im_img* img, int *trans )
 {
 
     ColorMapObject* cm;
     GifColorType* dest;
     const uint8_t* src;
     int i;
+    int num_colours = im_img_pal_num_colours(img);
 
     // TODO:  GifMakeMapObject fails if colour count is not power-of-two.
-    cm = GifMakeMapObject( pal->NumColours, NULL );
+    cm = GifMakeMapObject( num_colours, NULL );
     if (!cm) {
         return NULL;
     }
     
-    src = pal->Data;
+    src = im_img_pal_data(img);
     dest = cm->Colors;
     *trans = -1;
-    switch (pal->Format) {
+    switch (im_img_pal_fmt(img)) {
         case PALFMT_RGB:
-            for (i=0; i<pal->NumColours; ++i) {
+            for (i=0; i<num_colours; ++i) {
                 dest->Red = *src++;
                 dest->Green = *src++;
                 dest->Blue = *src++;
@@ -329,7 +325,7 @@ static ColorMapObject *palette_to_cm( im_pal* pal, int *trans )
         case PALFMT_RGBA:
             {
                 uint8_t alpha;
-                for (i=0; i<pal->NumColours; ++i) {
+                for (i=0; i<num_colours; ++i) {
                     dest->Red = *src++;
                     dest->Green = *src++;
                     dest->Blue = *src++;
@@ -360,21 +356,28 @@ static bool calc_extents( im_bundle* b, int* min_x, int* min_y, int* max_x, int*
     *max_y = INT_MIN;
 
     for (n=0; n<num_frames; ++n) {
+        int x,y,w,h;
         img = im_bundle_get_frame(b,n);
         if (!img) {
             return false;
         }
-        if( img->XOffset < *min_x) {
-            *min_x = img->XOffset;
+
+        x = im_img_x_offset(img);
+        y = im_img_y_offset(img);
+        w = im_img_w(img);
+        h = im_img_h(img);
+
+        if (x < *min_x) {
+            *min_x = x;
         } 
-        if( img->YOffset < *min_y) {
-            *min_y = img->YOffset;
+        if (y < *min_y) {
+            *min_y = y;
         } 
-        if( img->XOffset+ img->Width > *max_x) {
-            *max_x = img->XOffset + img->Width;
+        if ((x+w) > *max_x) {
+            *max_x = x+w;
         } 
-        if( img->YOffset+ img->Height > *max_y) {
-            *max_y = img->YOffset + img->Height;
+        if ((y+h) > *max_y) {
+            *max_y = y+h;
         } 
 
     }
@@ -423,7 +426,7 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out, ImErr *err)
         *err = ERR_BADPARAM;
         return false;
     }
-    global_cm = palette_to_cm( first_img->Palette, &global_trans);
+    global_cm = palette_to_cm( first_img, &global_trans);
     if (!global_cm) {
         *err = ERR_NOMEM;
         return false;
@@ -460,7 +463,7 @@ static bool write_gif_bundle(im_bundle* bundle, im_writer* out, ImErr *err)
     }
 
     for( frame=0; frame<num_frames; ++frame) {
-        if (!write_frame(gif, bundle, frame, first_img->Palette, global_trans, err ) ) {
+        if (!write_frame(gif, bundle, frame, first_img, global_trans, err ) ) {
             goto bailout;
         }
     }
@@ -504,12 +507,14 @@ static bool write_loops(GifFileType*gif, int loops)
 }
 
 
-static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal* first_palette, int global_trans, ImErr* err)
+static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_img* first_frame, int global_trans, ImErr* err)
 {
     im_img* img;
     int y;
     ColorMapObject* frame_cm = NULL;
     int trans = global_trans;
+    int width = img_img_w(img);
+    int height = img_img_h(img);
 
     img = im_bundle_get_frame(bundle,frame);
     if(!img) {
@@ -518,19 +523,14 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal*
     }
 
     // sanity checking
-    if( img->Format != FMT_COLOUR_INDEX ) {
+    if( im_img_format(img) != FMT_COLOUR_INDEX ) {
         *err = ERR_UNSUPPORTED;
         goto bailout;
     }
-    if( !img->Palette ) {
-        *err = ERR_BADPARAM;
-        goto bailout;
-    }
-
 
     // decide if frame requires its own palette
-    if( !im_pal_equal(first_palette, img->Palette)) {
-        frame_cm = palette_to_cm(img->Palette, &trans);
+    if( !im_img_pal_equal(first_frame, img)) {
+        frame_cm = palette_to_cm(img, &trans);
         if( !frame_cm) {
             *err = ERR_NOMEM;
             return false;
@@ -557,8 +557,8 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal*
 
     if (GIF_OK != EGifPutImageDesc(
         gif,
-        img->XOffset, img->YOffset,
-        img->Width, img->Height,
+        im_img_x_offset(img), im_img_y_offset(img),
+        width, height,
         false,  // interlace
         frame_cm))
     {
@@ -569,8 +569,8 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_pal*
         goto bailout;
     }
 
-    for (y=0; y<img->Height; ++y) {
-        if( GIF_OK !=EGifPutLine( gif, (GifPixelType*)im_img_row(img,y), img->Width)) {
+    for (y=0; y<height; ++y) {
+        if( GIF_OK !=EGifPutLine( gif, (GifPixelType*)im_img_row(img,y), width)) {
             *err = translate_err(gif->Error);
             goto bailout;
         }

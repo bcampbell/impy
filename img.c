@@ -188,6 +188,19 @@ static int image_pal_num_colours(const im_img* img)
 static ImPalFmt image_pal_fmt(const im_img* img)
     { return ((const struct image*)img)->pal_fmt; }
 
+// metadata access... too verbose?
+
+static int image_x_offset(const im_img *img)
+    { return ((const struct image*)img)->x_offset; }
+static int image_y_offset(const im_img *img)
+    { return ((const struct image*)img)->y_offset; }
+
+static void image_set_offset(im_img *img, int x, int y)
+{
+    struct image* foo = (struct image*)img;
+    foo->x_offset = x;
+    foo->y_offset = y;
+}
 
 im_img_impl im_default_img_impl = {
     image_create,
@@ -203,7 +216,11 @@ im_img_impl im_default_img_impl = {
     image_pal_set,
     image_pal_data,
     image_pal_num_colours,
-    image_pal_fmt
+    image_pal_fmt,
+
+    image_x_offset,
+    image_y_offset,
+    image_set_offset,
 };
 
 

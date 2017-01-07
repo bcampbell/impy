@@ -61,32 +61,28 @@ static int bpp(ImFmt fmt, ImDatatype datatype) {
 }
 
 
-#if 0
-// TODO!
-
 // returns true if palettes are equal (same format, same colours)
-bool im_pal_equal( im_pal* a, im_pal* b )
+bool im_pal_equal( const im_img* a, const im_img* b )
 {
     size_t nbytes;
 
-    if( a->NumColours!=b->NumColours) {
+    if (im_img_pal_num_colours(a) != im_img_pal_num_colours(b)) {
         return false;
     }
-    if( a->Format!=b->Format) {
+    if (im_img_pal_fmt(a) != im_img_pal_fmt(b)) {
         return false;
     }
-    switch (a->Format) {
+    switch (im_img_pal_fmt(a)) {
         case PALFMT_RGB: nbytes=3; break;
         case PALFMT_RGBA: nbytes=4; break;
         default: return false;
     }
-    if(memcmp( a->Data, b->Data, nbytes) != 0 ) {
+    if(memcmp( im_img_pal_data(a), im_img_pal_data(b), nbytes) != 0 ) {
         return false;
     }
     return true;
 }
 
-#endif
 
 static struct handler* pick_handler_by_filename(const char* filename)
 {
