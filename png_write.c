@@ -9,7 +9,7 @@ static void custom_write(png_structp png_ptr,
 static void custom_flush(png_structp png_ptr);
 static bool suss_color_type( ImFmt fmt, int* color_type );
 static bool suss_bit_depth( ImDatatype dt, int *bit_depth);
-static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_pal *pal);
+static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_img *img);
 
 
 bool write_png_image(im_img* img, im_writer* out, ImErr* err)
@@ -49,15 +49,17 @@ bool write_png_image(im_img* img, im_writer* out, ImErr* err)
         png_uint_32 width,height;
         int bit_depth,color_type;
         int y;
-        width = img->Width;
-        height = img->Height;
+        ImFmt img_fmt;
+        width = im_img_w(img);
+        height = im_img_h(img);
+        img_fmt = im_img_format(img);
 
-        if (!suss_color_type(img->Format, &color_type)) {
+        if (!suss_color_type(img_fmt, &color_type)) {
             *err = ERR_UNSUPPORTED;
             goto bailout;
         }
 
-        if (!suss_bit_depth(img->Datatype, &bit_depth)) {
+        if (!suss_bit_depth(im_img_datatype(img), &bit_depth)) {
             *err = ERR_UNSUPPORTED;
             goto bailout;
         }
@@ -70,9 +72,9 @@ bool write_png_image(im_img* img, im_writer* out, ImErr* err)
             PNG_COMPRESSION_TYPE_DEFAULT,
             PNG_FILTER_TYPE_DEFAULT);
 
-        if (img->Format == FMT_COLOUR_INDEX)
+        if (img_fmt == FMT_COLOUR_INDEX)
         {
-            if( !plonk_palette( png_ptr, info_ptr, img->Palette) ) {
+            if( !plonk_palette( png_ptr, info_ptr, img) ) {
                 *err = ERR_UNSUPPORTED;
                 goto bailout;
             }
@@ -86,7 +88,7 @@ bool write_png_image(im_img* img, im_writer* out, ImErr* err)
         png_write_info(png_ptr, info_ptr);
 
         // set up any transforms
-        if (img->Format == FMT_BGR || img->Format == FMT_BGRA) {
+        if (img_fmt == FMT_BGR || img_fmt == FMT_BGRA) {
             png_set_bgr(png_ptr);
         }
 
@@ -158,31 +160,29 @@ static bool suss_bit_depth( ImDatatype dt, int *bit_depth)
 
 
 // return false if anything unsupported or otherwise odd
-static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_pal *pal)
+static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_img *img)
 {
     png_color rgb[256];
     png_byte trans[256];
     int maxtrans = -1;
+    int num_colours = im_img_pal_num_colours(img);
+    ImPalFmt pal_fmt = im_img_pal_fmt(img);
     int i;
 
-    if(!pal) {
+    if (num_colours>256) {
         return false;
     }
 
-    if (pal->NumColours>256) {
-        return false;
-    }
-
-    if (pal->Format == PALFMT_RGB) {
-        uint8_t *src = pal->Data;
-        for ( i=0; i<pal->NumColours; ++i ) {
+    if (pal_fmt == PALFMT_RGB) {
+        uint8_t *src = im_img_pal_data(img);
+        for ( i=0; i<num_colours; ++i ) {
             rgb[i].red = *src++;
             rgb[i].green = *src++;
             rgb[i].blue = *src++;
         }
-    } else if (pal->Format == PALFMT_RGBA) {
-        uint8_t *src = pal->Data;
-        for ( i=0; i<pal->NumColours; ++i ) {
+    } else if (pal_fmt == PALFMT_RGBA) {
+        uint8_t *src = im_img_pal_data(img);
+        for ( i=0; i<num_colours; ++i ) {
             rgb[i].red = *src++;
             rgb[i].green = *src++;
             rgb[i].blue = *src++;
@@ -195,7 +195,7 @@ static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_pal 
         return false;
     }
 
-    png_set_PLTE(png_ptr, info_ptr, rgb, pal->NumColours);
+    png_set_PLTE(png_ptr, info_ptr, rgb, num_colours);
     if (maxtrans!=-1) {
         png_set_tRNS(png_ptr, info_ptr, trans, maxtrans+1, NULL);
     }

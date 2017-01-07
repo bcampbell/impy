@@ -176,6 +176,7 @@ static bool image_pal_set( im_img* img, ImPalFmt fmt, int ncolours, const void* 
     } else {
         memset( foo->pal_data, 0, ncolours*colsize);
     }
+    return true;
 }
 
 

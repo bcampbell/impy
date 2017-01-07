@@ -8,6 +8,7 @@
 static void info_callback(png_structp png_ptr, png_infop info_ptr);
 static void row_callback(png_structp png_ptr, png_bytep new_row, png_uint_32 row_num, int pass);
 static void end_callback(png_structp png_ptr, png_infop info);
+static bool apply_palette(png_structp png_ptr, png_infop info, im_img* img);
 
 
 static bool is_png(const uint8_t* buf, int nbytes);
@@ -187,71 +188,11 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
         }
 
         // if there's a palette, install it
-        {
-
-            png_colorp colours;
-            int num_colours;
-            int i;
-            if (png_get_PLTE(png_ptr, info_ptr, &colours, &num_colours) == PNG_INFO_PLTE) {
-                // there is a palette
-                // png palettes are RGB only, so if there is a tRNS chunk, we'll
-                // use it to provide alpha values
-                im_pal *pal;
-                png_bytep trans = NULL;
-                int  num_trans;
-                ImPalFmt palfmt;
-                
-                // get any tRNS data
-                if (png_get_tRNS(png_ptr, info_ptr, &trans, &num_trans, NULL) == PNG_INFO_tRNS) {
-                } else {
-                    num_trans = 0;
-                }
-
-                // alloc our palette
-                if (num_trans>0) {
-                    palfmt = PALFMT_RGBA;
-                } else {
-                    palfmt = PALFMT_RGBA;
-                }
-
-                pal = im_pal_new(palfmt, num_colours);
-                if (!pal) {
-                    cbDat->err = ERR_NOMEM;
-                    png_error(png_ptr, "im_pal_new() failed");
-                }
-                cbDat->image->Palette = pal;
-
-                //
-                switch (palfmt) {
-                    case PALFMT_RGB:
-                        {
-                            uint8_t* colp = pal->Data;
-                            for (i = 0; i < num_colours; ++i) {
-                                *colp++ = colours[i].red;
-                                *colp++ = colours[i].green;
-                                *colp++ = colours[i].blue;
-                            }
-                        }
-                        break;
-                    case PALFMT_RGBA:
-                        {
-                            uint8_t* colp = pal->Data;
-                            for (i = 0; i < num_colours; ++i) {
-                                *colp++ = colours[i].red;
-                                *colp++ = colours[i].green;
-                                *colp++ = colours[i].blue;
-                                *colp++ = (i<num_trans) ? trans[i] : 255;
-                            }
-                        }
-                        break;
-                }
-            }
+        if (!apply_palette(png_ptr, info_ptr, cbDat->image)) {
+            cbDat->err = ERR_NOMEM;
+            png_error(png_ptr, "failed while installing palette");
         }
     }
-    
-
-
- //   png_set_progressive_read_fn(png_ptr, img, info_callback, row_callback, end_callback);
 }
 
 
@@ -266,5 +207,66 @@ static void row_callback(png_structp png_ptr, png_bytep new_row,
 
 static void end_callback(png_structp png_ptr, png_infop info)
 {
+}
+
+
+static bool apply_palette(png_structp png_ptr, png_infop info_ptr, im_img* img) {
+    png_colorp colours;
+    int num_colours;
+    int i;
+    png_bytep trans = NULL;
+    int  num_trans;
+    ImPalFmt palfmt;
+
+    if (png_get_PLTE(png_ptr, info_ptr, &colours, &num_colours) != PNG_INFO_PLTE) {
+        // no PLTE chunk, so our work here is done
+        return true;
+    }
+
+    // png palettes are RGB only, so if there is a tRNS chunk, we'll
+    // use it to provide alpha values
+    
+    // get any tRNS data
+    if (png_get_tRNS(png_ptr, info_ptr, &trans, &num_trans, NULL) == PNG_INFO_tRNS) {
+    } else {
+        num_trans = 0;
+    }
+
+    // alloc our palette
+    if (num_trans>0) {
+        palfmt = PALFMT_RGBA;
+    } else {
+        palfmt = PALFMT_RGB;
+    }
+
+    if (!im_img_pal_set( img, palfmt, num_colours,NULL)) {
+        return false;
+    }
+    //
+    switch (palfmt) {
+        case PALFMT_RGB:
+            {
+                uint8_t* colp = im_img_pal_data(img);
+                for (i = 0; i < num_colours; ++i) {
+                    *colp++ = colours[i].red;
+                    *colp++ = colours[i].green;
+                    *colp++ = colours[i].blue;
+                }
+            }
+            break;
+        case PALFMT_RGBA:
+            {
+                uint8_t* colp = im_img_pal_data(img);
+                for (i = 0; i < num_colours; ++i) {
+                    *colp++ = colours[i].red;
+                    *colp++ = colours[i].green;
+                    *colp++ = colours[i].blue;
+                    *colp++ = (i<num_trans) ? trans[i] : 255;
+                }
+            }
+            break;
+    }
+
+    return true;
 }
 

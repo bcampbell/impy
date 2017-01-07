@@ -62,7 +62,7 @@ static int bpp(ImFmt fmt, ImDatatype datatype) {
 
 
 // returns true if palettes are equal (same format, same colours)
-bool im_pal_equal( const im_img* a, const im_img* b )
+bool im_img_pal_equal(const im_img* a, const im_img* b)
 {
     size_t nbytes;
 
