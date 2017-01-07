@@ -49,6 +49,9 @@ typedef enum ImPalFmt {
     PALFMT_RGB
 } ImPalFmt;
 
+typedef struct im_img {} im_img;
+
+#if 0
 typedef struct im_pal {
     void* Data;
     ImPalFmt Format;
@@ -75,6 +78,39 @@ typedef struct im_img {
 
     // disposal, frame duration, other metadata...
 } im_img;
+
+#endif
+
+
+// interface of an im_img implementation.
+// a default implementation provided, but you can plug in one to map
+// to your 'native' image representation
+// for example, you could provide an SDL_Surface wrapper, so any
+// im_img* could be simply cast to SDL_Surface* as needed.
+typedef struct im_img_impl {
+
+    im_img* (*create)( int, int, int, ImFmt, ImDatatype );
+    void (*free)(im_img *img);
+
+    int (*width)(const im_img *);
+    int (*height)(const im_img *);
+    int (*depth)(const im_img *);
+    ImFmt (*format)(const im_img *);
+    ImDatatype (*datatype)(const im_img *);
+    void* (*row)(const im_img *, int);
+    int (*pitch)(const im_img *);
+
+    // image palette fns
+    bool (*pal_set)(im_img* img, ImPalFmt fmt, int ncolours, const void* data);
+    void* (*pal_data)(const im_img* img);
+    int (*pal_num_colours)(const im_img* img);
+    ImPalFmt (*pal_fmt)(const im_img* img);
+
+} im_img_impl;
+
+
+extern im_img_impl im_default_img_impl;
+extern im_img_impl *im_current_img_impl;
 
 
 /* IO abstraction - basically follows stdio.h style */
@@ -147,15 +183,61 @@ static inline size_t im_write( im_writer* w, const void* data, size_t nbytes)
 
 
 // creates a new image (no palette, even if indexed)
-extern im_img* im_img_new( int w, int h, int d, ImFmt fmt, ImDatatype datatype );
-extern void im_img_free(im_img *img);
-extern void* im_img_row(im_img *img, int row);
+static inline im_img* im_img_new( int w, int h, int d, ImFmt fmt, ImDatatype datatype )
+    { return im_current_img_impl->create(w,h,d,fmt,datatype); }
+
+static inline void im_img_free(im_img *img)
+    { im_current_img_impl->free(img); }
+
 
 extern im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
-extern im_pal* im_pal_new( ImPalFmt fmt, int numColours );
-extern void im_pal_free( im_pal* pal );
-extern bool im_pal_equal( im_pal* a, im_pal* b );
+// Image fns
+
+static inline int im_img_w(const im_img *img)
+    { return im_current_img_impl->width(img); }
+
+static inline int im_img_h(const im_img *img)
+    { return im_current_img_impl->height(img); }
+
+static inline int im_img_d(const im_img *img)
+    { return im_current_img_impl->depth(img); }
+
+static inline ImFmt im_img_format(const im_img *img)
+    { return im_current_img_impl->format(img); }
+
+static inline ImDatatype im_img_datatype(const im_img *img)
+    { return im_current_img_impl->datatype(img); }
+
+static inline void* im_img_row(const im_img *img, int row)
+    { return im_current_img_impl->row(img,row); }
+
+static inline int im_img_pitch(const im_img *img)
+    { return im_current_img_impl->pitch(img); }
+
+// TODO: metadata access...
+
+// image palette fns
+static inline bool im_img_pal_set( im_img* img, ImPalFmt fmt, int ncolours, const void* data)
+    { return im_current_img_impl->pal_set( img, fmt, ncolours, data); }
+
+// load colours into palette, converting format if necessary
+extern bool im_img_pal_write( im_img* img, int first_colour, int num_colours, ImPalFmt data_fmt, const void* data);
+
+// read colours out of palette, converting format if necessary
+extern bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImPalFmt dest_fmt, void* dest);
+
+static inline int im_img_pal_num_colours(const im_img* img)
+    { return im_current_img_impl->pal_num_colours( img ); }
+
+static inline ImPalFmt im_img_pal_fmt(const im_img* img)
+    { return im_current_img_impl->pal_fmt( img ); }
+
+// get access to raw palette coloure
+static inline void* im_img_pal_data(const im_img* img)
+    { return im_current_img_impl->pal_data( img ); }
+
+
 
 
 

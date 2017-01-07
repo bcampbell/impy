@@ -11,6 +11,7 @@ static struct handler *handlers[] = { &handle_png, &handle_gif, NULL };
 
 
 static struct handler* pick_handler_for_read(im_reader* rdr);
+static void copy_pal_range( ImPalFmt src_fmt, const uint8_t* src, ImPalFmt dest_fmt, uint8_t *dest, int first_colour, int num_colours);
 
 void* imalloc( size_t size)
 {
@@ -60,94 +61,8 @@ static int bpp(ImFmt fmt, ImDatatype datatype) {
 }
 
 
-im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
-{
-    im_img* img;
-    int bytesPerPixel;
-    int datsize;
-
-    if( w<1 || h<1 || d<1 ) {
-        return NULL;
-    }
-
-    bytesPerPixel = bpp(fmt,datatype);
-    if(bytesPerPixel==0) {
-        return NULL;
-    }
-
-
-    datsize = bytesPerPixel * w * h;
-
-    img = imalloc(datsize);
-    if (img==NULL) {
-        return 0;
-    }
-
-    img->Width = w;
-    img->Height = h;
-    img->Depth = d;
-
-    img->XOffset = 0;
-    img->YOffset = 0;
-
-    img->Format = fmt;
-    img->Datatype = datatype;
-    img->BytesPerPixel = bytesPerPixel;
-    img->Pitch = img->BytesPerPixel * img->Width;
-    img->Data = imalloc(img->Height * img->Pitch * img->Depth);
-    if (!img->Data) {
-        ifree(img);
-        return NULL;
-    }
-    img->Palette = NULL;
-
-    return img;
-}
-
-void im_img_free(im_img *img)
-{
-    if (img->Palette) {
-        im_pal_free(img->Palette);
-    }
-
-    ifree(img);
-}
-
-void* im_img_row(im_img *img, int row)
-{
-    return img->Data + (row * img->Pitch);
-}
-
-
-
-im_pal* im_pal_new( ImPalFmt fmt, int numColours )
-{
-    im_pal* pal = imalloc(sizeof(im_pal));
-    size_t entsize;
-    if (!pal) {
-        return NULL;
-    }
-    pal->Format = fmt;
-    pal->NumColours = numColours;
-
-    switch(fmt) {
-        case PALFMT_RGB: entsize = 3; break;
-        case PALFMT_RGBA: entsize = 4; break;
-    }
-
-    pal->Data = imalloc(numColours * entsize);
-    if (!pal->Data) {
-        ifree(pal);
-        return NULL;
-    }
-    return pal;
-}
-
-void im_pal_free( im_pal* pal )
-{
-    ifree(pal->Data);
-    ifree(pal);
-}
+#if 0
+// TODO!
 
 // returns true if palettes are equal (same format, same colours)
 bool im_pal_equal( im_pal* a, im_pal* b )
@@ -171,6 +86,7 @@ bool im_pal_equal( im_pal* a, im_pal* b )
     return true;
 }
 
+#endif
 
 static struct handler* pick_handler_by_filename(const char* filename)
 {
@@ -329,3 +245,60 @@ bool im_bundle_save( im_bundle* bundle, const char* filename, ImErr* err )
 }
 
 
+// load colours into palette
+bool im_img_pal_write( im_img* img, int first_colour, int num_colours, ImPalFmt data_fmt, const void* data)
+{
+    if (first_colour+num_colours > im_img_pal_num_colours(img)) {
+        return false;
+    }
+
+    copy_pal_range(
+        data_fmt, data,
+        im_img_pal_fmt(img), im_img_pal_data(img),
+        first_colour, num_colours);
+    return true;
+}
+
+
+// read colours from palette
+bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImPalFmt dest_fmt, void* dest)
+{
+    if (first_colour+num_colours > im_img_pal_num_colours(img)) {
+        return false;
+    }
+
+    copy_pal_range(
+        im_img_pal_fmt(img), im_img_pal_data(img),
+        dest_fmt, dest,
+        first_colour, num_colours);
+    return true;
+}
+
+
+// helper func - copy/convert palette colours
+static void copy_pal_range( ImPalFmt src_fmt, const uint8_t* src, ImPalFmt dest_fmt, uint8_t *dest, int first_colour, int num_colours) {
+
+    if (src_fmt==PALFMT_RGB && dest_fmt==PALFMT_RGB) {
+        memcpy(dest + (first_colour*3), src, num_colours*3);
+    } else if (src_fmt==PALFMT_RGBA && dest_fmt==PALFMT_RGBA) {
+        memcpy(dest + (first_colour*4), src, num_colours*4);
+    } else if (src_fmt == PALFMT_RGB && dest_fmt==PALFMT_RGBA) {
+        int i;
+        dest += 4*first_colour;
+        for (i=0; i<num_colours; ++i) {
+            *dest++ = *src++;
+            *dest++ = *src++;
+            *dest++ = *src++;
+            *dest++ = 255;
+        }
+    } else if (src_fmt == PALFMT_RGBA && dest_fmt==PALFMT_RGB) {
+        int i;
+        dest += 3*first_colour;
+        for (i=0; i<num_colours; ++i) {
+            *dest++ = *src++;
+            *dest++ = *src++;
+            *dest++ = *src++;
+            ++src;
+        }
+    }
+}
