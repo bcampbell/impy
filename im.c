@@ -7,7 +7,7 @@
 
 
 
-static struct handler *handlers[] = { &handle_png, &handle_gif, NULL };
+static struct handler *handlers[] = { &handle_png, &handle_gif, &handle_iff, NULL };
 
 
 static struct handler* pick_handler_for_read(im_reader* rdr);
@@ -77,7 +77,8 @@ static struct handler* pick_handler_for_read(im_reader* rdr)
 {
     int i;
 
-    uint8_t cookie[8];
+    // is_iff requires 12 bytes...
+    uint8_t cookie[16];
     if (im_read(rdr, cookie, sizeof(cookie)) != sizeof(cookie)) {
         return NULL;
     }

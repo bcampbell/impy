@@ -39,7 +39,7 @@ typedef enum ImErr {
     ERR_MALFORMED,      // data looks borked
     ERR_UNSUPPORTED,     // file has stuff we don't (yet) support
     ERR_NOCONV,         // unsupported pixel conversion (eg rgb->indexed)
-    ERR_FILE,           // stdlib file error, check errno
+    ERR_FILE,           // general file error
     ERR_UNKNOWN_FILE_TYPE,
     ERR_EXTLIB,         // any unspecified error in external lib
 } ImErr;
@@ -98,6 +98,7 @@ typedef struct im_reader {
     size_t (*read)(im_reader*, void* , size_t );
     int (*seek)(im_reader*, long , int);
     int (*eof)(im_reader*);
+    int (*error)(im_reader*);
     int (*close)(im_reader*);
 } im_reader;
 
@@ -107,6 +108,11 @@ typedef struct im_bundle im_bundle;
 typedef struct SlotID {
     int frame,mipmap,layer,face;
 } SlotID;
+
+
+/**********
+ * IO stuff
+ **********/
 
 // open a file for reading (binary mode)
 // the returned reader uses stdio (fopen, fread etc...)
@@ -122,13 +128,74 @@ extern im_reader* im_open_file_reader( const char* filename, ImErr* err);
 static inline size_t im_read(im_reader* rdr, void* buf, size_t nbytes)
     { return rdr->read(rdr, buf, nbytes); }
 
-//
+// returns 0 for success, non-zero for error
 static inline int im_seek(im_reader* rdr, long pos, int whence)
     { return  rdr->seek(rdr, pos, whence); }
 
 // im_eof returns non-zero if the reader is out of data
 static inline int im_eof(im_reader* rdr)
     { return rdr->eof(rdr); }
+
+// im_error returns non-zero if the reader is in error state (including eof)
+static inline int im_error(im_reader* rdr)
+    { return rdr->error(rdr); }
+
+static inline uint8_t im_read_u8(im_reader* rdr)
+{
+    uint8_t dat;
+    if (im_read(rdr,&dat,sizeof(dat)) != sizeof(dat)) {
+        return 0;
+    }
+    return dat;
+}
+
+static inline uint16_t im_read_u16be(im_reader* rdr)
+{
+    uint8_t dat[2];
+    if (im_read(rdr,dat,sizeof(dat)) != sizeof(dat)) {
+        return 0;
+    }
+    return ((uint16_t)dat[0]<<8) | ((uint16_t)dat[1]);
+}
+
+// cheesy
+static inline int16_t im_read_s16be(im_reader* rdr)
+{
+    return (int16_t)im_read_u16be(rdr);
+}
+
+static inline uint16_t im_read_u16le(im_reader* rdr)
+{
+    uint8_t dat[2];
+    if (im_read(rdr,dat,sizeof(dat)) != sizeof(dat)) {
+        return 0;
+    }
+    return ((uint16_t)dat[1]<<8) | ((uint16_t)dat[0]);
+}
+
+static inline uint32_t im_read_u32be(im_reader* rdr)
+{
+    uint8_t dat[4];
+    if (im_read(rdr,dat,sizeof(dat)) != sizeof(dat)) {
+        return 0;
+    }
+    return ((uint32_t)dat[0]<<24) |
+        ((uint32_t)dat[1]<<16) |
+        ((uint32_t)dat[2]<<8) |
+        ((uint32_t)dat[3]);
+}
+
+static inline uint32_t im_read_u32le(im_reader* rdr)
+{
+    uint8_t dat[4];
+    if (im_read(rdr,dat,sizeof(dat)) != sizeof(dat)) {
+        return 0;
+    }
+    return ((uint32_t)dat[3]<<24) |
+        ((uint32_t)dat[2]<<16) |
+        ((uint32_t)dat[1]<<8) |
+        ((uint32_t)dat[0]);
+}
 
 
 typedef struct im_writer im_writer;
@@ -155,6 +222,10 @@ static inline size_t im_write( im_writer* w, const void* data, size_t nbytes)
     { return w->write(w,data,nbytes); }
 
 
+
+/**********************
+ * Image handling stuff
+ **********************/
 
 // creates a new image (no palette, even if indexed)
 static inline im_img* im_img_new( int w, int h, int d, ImFmt fmt, ImDatatype datatype )
@@ -225,6 +296,13 @@ static inline void im_img_set_offset(im_img* img, int x, int y)
 
 extern im_img* im_img_load( const char* filename, ImErr* err);
 extern im_img* im_img_read( im_reader* rdr, ImErr* err);
+
+
+
+/**********************
+ * bundle handling stuff
+ **********************/
+
 extern im_bundle* im_bundle_load( const char* filename, ImErr* err);
 extern im_bundle* im_bundle_read( im_reader* rdr, ImErr* err);
 extern bool im_bundle_save( im_bundle* bundle, const char* filename, ImErr* err);

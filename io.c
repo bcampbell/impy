@@ -53,6 +53,12 @@ static int file_reader_eof(im_reader* r)
     return feof(fr->fp);
 }
 
+static int file_reader_error(im_reader* r)
+{
+    struct file_reader *fr = (struct file_reader*)r;
+    return ferror(fr->fp);
+}
+
 
 static int file_reader_close(im_reader* r)
 {
@@ -87,6 +93,7 @@ im_reader* im_open_file_reader( const char* filename, ImErr* err)
     rdr->base.read = file_reader_read;
     rdr->base.seek = file_reader_seek;
     rdr->base.eof = file_reader_eof;
+    rdr->base.error = file_reader_error;
     rdr->base.close = file_reader_close;
     return (im_reader*)rdr;
 }
