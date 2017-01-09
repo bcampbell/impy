@@ -28,6 +28,10 @@ typedef struct {
 
 typedef struct context context;
 
+
+// we use a context struct for each FORM we encounter...
+// (and a dummy "root" one to act as a sort of catchall)
+// The can be nested (eg ANIM, containing multiple ILBMs).
 typedef struct context {
     char kind[4];       // "ILBM", "PBM ", "ANIM" (or "root")
     context* parent;
@@ -120,6 +124,8 @@ static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 
 static bool decodeLine( im_reader* rdr, uint8_t* dest, int nbytes);
+static im_img* ctx_ilbm_to_img(context* ctx, ImErr* err) ;
+static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err);
 
 
 struct handler handle_iff = {is_iff, NULL, read_iff_bundle, NULL, NULL, NULL};
@@ -170,9 +176,13 @@ static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
     } else if( chkcc(kind,"ANIM") ) {
         printf("%d:->ANIM\n", ctx->level );
     } else {
-        // unsupported FORM type
-        *err = ERR_MALFORMED;
-        return false;
+        // unsupported FORM type (eg 8SVX sound)- skip it
+        printf("skip FORM %c%c%c%c\n", kind[0], kind[1], kind[2], kind[3]);
+        if(im_seek(rdr,remaining, SEEK_CUR) != 0 ) {
+            *err = ERR_FILE;
+            return false;
+        }
+        return true;
     }
 
     child = ctx_new(ctx, kind);
@@ -182,6 +192,7 @@ static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
     }
 
     while (remaining>0) {
+        printf("remaining: %d\n",remaining);
         int childchunklen = parse_chunk(child,rdr,err);
         if (childchunklen < 0) {
             // child already owned by ctx, so don't need to clean it up here
@@ -294,7 +305,6 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
     bytes_per_line = bmhd->nPlanes * (words_per_line*2);
     data_size = bmhd->h * bytes_per_line;
     ctx->image_data = imalloc(data_size);
-    printf("alloc %d bytes\n", data_size);
     if( bmhd->compression == cmpNone) {
 
         int n = im_read(rdr,ctx->image_data, data_size);
@@ -304,14 +314,12 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
             return false;
         }
     } else if (bmhd->compression == cmpByteRun1) {
-        printf("decompress\n");
         uint8_t* dest = ctx->image_data;
         int y;
         // the compression breaks at the end of each line
         // but can run across planes.
         // TODO: I think the mask is included in the run
         for (y=0; y<bmhd->h; ++y) {
-            printf("decode %d\n",y);
             if (!decodeLine(rdr,dest,bytes_per_line)) {
                 *err = ERR_MALFORMED;
                 return false;
@@ -391,6 +399,7 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
     uint8_t buf[8];
     bool success;
     if(im_read(rdr, buf,8) != 8) {
+            printf("POO1\n");
         *err = ERR_MALFORMED;   // TODO: distingush between read error and eof
         return -1;
     }
@@ -399,8 +408,8 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
         ((uint32_t)buf[6])<<8 |
         ((uint32_t)buf[7]);
 
-    printf("%d:%c%c%c%c (%d bytes)\n", ctx->level, buf[0], buf[1], buf[2], buf[3], chunklen );
 
+    printf("%d:%c%c%c%c (%d bytes)\n", ctx->level, buf[0], buf[1], buf[2], buf[3], chunklen );
     if (chkcc(buf,"FORM")) {
         printf("%d: enter FORM\n", ctx->level);
         // FORM chunks have children
@@ -427,6 +436,7 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
     }
 
     if (!success) {
+            printf("POO2\n");
         return -1;
     }
 
@@ -434,6 +444,7 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
         // read the pad byte
         if (im_seek(rdr, 1, SEEK_CUR)!=0) {
             *err = ERR_MALFORMED;
+            printf("POO3\n");
             return -1;
         }
     }
@@ -445,6 +456,8 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
 
 static im_bundle* read_iff_bundle( im_reader* rdr, ImErr* err )
 {
+    im_bundle* bundle = NULL;
+
     // TODO: could do away with root context perhaps...
     context* root = ctx_new(NULL,"root");
     if( !root) {
@@ -455,14 +468,118 @@ static im_bundle* read_iff_bundle( im_reader* rdr, ImErr* err )
         goto bailout;
     }
 
-    ctx_free(root);
 
-    *err = (ImErr)69;
-    return NULL;
+
+    bundle = im_bundle_new();
+    if(!bundle)
+    {
+        *err = ERR_NOMEM;
+        goto bailout;
+    }
+
+    if(!ctx_collect_bundle(root, bundle, err)) {
+        goto bailout;
+    }
+
+    ctx_free(root);
+    return bundle;
 
 bailout:
-    ctx_free(root);
+    if( root) {
+        ctx_free(root);
+    }
+    if( bundle) {
+        im_bundle_free(bundle);
+    }
+
     return NULL;
 }
 
+
+static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
+{
+    int i;
+    im_img* img = NULL;
+printf("collect (level %d)\n", ctx->level);
+    if (chkcc(ctx->kind,"ILBM") ) {
+        img = ctx_ilbm_to_img(ctx, err);
+        if (img) {
+            SlotID id = {0};
+            id.frame = im_bundle_num_frames(out)-1;
+            printf("add frame %d\n", id.frame);
+            if (!im_bundle_set(out,id,img)) {
+                *err = ERR_NOMEM;
+                return false;
+            }
+            return true;    // BAIL OUT AFTER 1ST IMAGE
+        } else {
+            printf("img fail\n");
+            return false;
+        }
+    }
+
+
+    for( i=0; i<ctx->length; ++i) {
+        if (!ctx_collect_bundle(ctx->children[i], out, err)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static im_img* ctx_ilbm_to_img(context* ctx, ImErr* err)
+{
+    int y;
+    int plane_pitch;
+    BitMapHeader* bmhd = &ctx->bmhd;
+    if( !ctx->got_bmhd || !ctx->image_data) {
+        *err = ERR_MALFORMED;
+        return NULL;
+    }
+
+    // TODO:
+    if( bmhd->nPlanes>8) {
+        *err = ERR_UNSUPPORTED;
+        return NULL;
+    }
+
+    // TODO: handle 24 and 32-plane images (FMT_RGB and FMT_RGBA)
+    im_img* img = im_img_new(bmhd->w, bmhd->h, 1, FMT_COLOUR_INDEX, DT_U8);
+    if( !img) {
+        *err = ERR_NOMEM;
+        return NULL;
+    }
+
+    plane_pitch = 2*((bmhd->w+15)/16);
+    // convert planar data to 8bit indexed
+    // TODO: handle mask plane!
+    for (y=0; y<bmhd->h; ++y) {
+        uint8_t* dest = im_img_row(img,y);
+        int x;
+        for( x=0; x<bmhd->w; ++x) {
+            uint8_t pix=0;
+            const uint8_t* src = ctx->image_data + (y*plane_pitch*bmhd->nPlanes) + x/8;
+            int srcbit = 7 - (x&7);
+            int destbit;
+            for(destbit = 0; destbit<bmhd->nPlanes; ++destbit) {
+                *dest |= (((*src) >> srcbit)&0x01)<<destbit;
+                src += plane_pitch;
+            }
+            ++dest;
+        }
+    }
+
+    // install palette
+    // TODO: pad out to at least 2^nPlanes entries
+    if (ctx->cmap_data) {
+        if( !im_img_pal_set(img, PALFMT_RGB, ctx->cmap_len/3, ctx->cmap_data) ) {
+            *err = ERR_NOMEM;
+            im_img_free(img);
+            return NULL;
+        }
+    }
+
+    return img;
+}
 
