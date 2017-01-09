@@ -160,9 +160,9 @@ static inline uint16_t im_read_u16be(im_reader* rdr)
 
 // cheesy
 static inline int16_t im_read_s16be(im_reader* rdr)
-{
-    return (int16_t)im_read_u16be(rdr);
-}
+    { return (int16_t)im_read_u16be(rdr); }
+static inline int8_t im_read_s8(im_reader* rdr)
+    { return (int8_t)im_read_u8(rdr); }
 
 static inline uint16_t im_read_u16le(im_reader* rdr)
 {

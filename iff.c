@@ -29,6 +29,7 @@ typedef struct {
 typedef struct context context;
 
 typedef struct context {
+    char kind[4];       // "ILBM", "PBM ", "ANIM" (or "root")
     context* parent;
     int level;
     context** children;
@@ -38,18 +39,19 @@ typedef struct context {
     // ilbm/pbm fields
     bool got_bmhd;
     BitMapHeader bmhd;
-    uint8_t* planes[8];
-    uint8_t* mask;
+    uint8_t* image_data;
+    uint8_t* mask_data;
     uint8_t* cmap_data;
     int cmap_len;
 } context;
 
 
-static context* ctx_new(context* parent) {
+static context* ctx_new(context* parent, const char* form_kind) {
     context* ctx = imalloc(sizeof(context));
     memset(ctx,0,sizeof(context));
 
     ctx->parent = parent;
+    memcpy(ctx->kind, form_kind, 4);
 
     if (parent) {
         ctx->level = parent->level+1;
@@ -87,13 +89,11 @@ static context* ctx_free(context* ctx)
         }
         ifree(ctx->children);
     }
-    for( i=0;i<8;++i) {
-        if (ctx->planes[i]) {
-            ifree(ctx->planes[i]);
-        }
+    if (ctx->image_data) {
+        ifree(ctx->image_data);
     }
-    if (ctx->mask) {
-        ifree(ctx->mask);
+    if (ctx->mask_data) {
+        ifree(ctx->mask_data);
     }
     if( ctx->cmap_data) {
         ifree(ctx->cmap_data);
@@ -118,6 +118,9 @@ static bool handle_CMAP( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 static bool handle_BODY( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
+
+static bool decodeLine( im_reader* rdr, uint8_t* dest, int nbytes);
+
 
 struct handler handle_iff = {is_iff, NULL, read_iff_bundle, NULL, NULL, NULL};
 
@@ -172,7 +175,7 @@ static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
         return false;
     }
 
-    child = ctx_new(ctx);
+    child = ctx_new(ctx, kind);
     if (!child) {
         *err = ERR_NOMEM;
         return false;
@@ -255,28 +258,115 @@ static bool handle_CMAP(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
 
 static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *err )
 {
+    int words_per_line, bytes_per_line, data_size;
     BitMapHeader* bmhd = &ctx->bmhd;
-    if (im_seek(rdr,chunklen,SEEK_CUR)!=0) {
-        *err = ERR_FILE;
-        return false;
-    }
+
+    // we'll read in and uncompress any data, but for now
+    // we'll leave it in planar form, to make it easier to
+    // decode DLTA chunks.
+
     if (!ctx->got_bmhd) {
         *err = ERR_MALFORMED;   // got BODY before BMHD
         return false;
     }
 
-    if( bmhd->compression == cmpByteRun1) {
-        *err = ERR_UNSUPPORTED;
+    switch (bmhd->compression) {
+        case cmpByteRun1: break;
+        case cmpNone: break;
+        default:
+            *err = ERR_UNSUPPORTED;
+            return false;
+    }
+
+    if (ctx->image_data) {
+        // already had a BODY chunk?
+        *err = ERR_MALFORMED;
         return false;
     }
 
- 
-    if( bmhd->compression == cmpNone) {
+    if (bmhd->nPlanes >32) {
+        *err = ERR_MALFORMED;
+        return false;
     }
 
+    // actual image data must be multiple of 16 pixels wide
+    words_per_line = (bmhd->w+15)/16;
+    bytes_per_line = bmhd->nPlanes * (words_per_line*2);
+    data_size = bmhd->h * bytes_per_line;
+    ctx->image_data = imalloc(data_size);
+    printf("alloc %d bytes\n", data_size);
+    if( bmhd->compression == cmpNone) {
+
+        int n = im_read(rdr,ctx->image_data, data_size);
+        if (n != data_size) {
+            // don't need to free image data - context will handle it
+            *err = ERR_MALFORMED;
+            return false;
+        }
+    } else if (bmhd->compression == cmpByteRun1) {
+        printf("decompress\n");
+        uint8_t* dest = ctx->image_data;
+        int y;
+        // the compression breaks at the end of each line
+        // but can run across planes.
+        // TODO: I think the mask is included in the run
+        for (y=0; y<bmhd->h; ++y) {
+            printf("decode %d\n",y);
+            if (!decodeLine(rdr,dest,bytes_per_line)) {
+                *err = ERR_MALFORMED;
+                return false;
+            }
+            dest += bytes_per_line;
+        }
+    }
 
     return true;
 }
+
+
+// decode a line of ILBM BODY compression
+static bool decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
+{
+    while (nbytes>0) {
+        uint8_t c = im_read_u8(rdr);
+        if(im_error(rdr)) {
+            return false;
+        }
+        if( c==128) {
+            break;
+        }
+        if (c>128) {
+            int i;
+            int cnt = (257-c);
+            uint8_t v;
+            if (nbytes<cnt) {
+                return false;   // overrun
+            }
+            v = im_read_u8(rdr);
+            if(im_error(rdr)) {
+                return false;
+            }
+            for (i=0; i<cnt; ++i) {
+                *dest++ = v;
+            }
+            nbytes -= cnt;
+        } else {
+            int cnt = c+1;
+            if (nbytes<cnt) {
+                return false;   // overrun
+            }
+            if (im_read( rdr, dest, cnt) != cnt) {
+                return false;
+            }
+            dest += cnt;
+            nbytes -= cnt;
+        }
+    }
+//    printf("%d bytes left over\n",nbytes);
+    return true;
+}
+
+
 
 static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err)
 {
@@ -355,7 +445,8 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
 
 static im_bundle* read_iff_bundle( im_reader* rdr, ImErr* err )
 {
-    context* root = ctx_new(NULL);
+    // TODO: could do away with root context perhaps...
+    context* root = ctx_new(NULL,"root");
     if( !root) {
         *err = ERR_NOMEM;
         goto bailout;
