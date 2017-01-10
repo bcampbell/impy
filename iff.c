@@ -123,10 +123,12 @@ static bool handle_BODY( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 
-static bool decodeLine( im_reader* rdr, uint8_t* dest, int nbytes);
+static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes);
 static im_img* ctx_ilbm_to_img(context* ctx, ImErr* err) ;
 static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err);
 
+static const char* indent( int n );
+int dump_chunk( int nest, im_reader *rdr );
 
 struct handler handle_iff = {is_iff, NULL, read_iff_bundle, NULL, NULL, NULL};
 
@@ -168,16 +170,14 @@ static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
     }
     remaining -= 4;
 
+    printf("%sformtype=%c%c%c%c\n", indent(ctx->level+1), kind[0], kind[1], kind[2], kind[3]);
 
     if( chkcc(kind,"ILBM") ) {
-        printf("%d:->ILBM\n", ctx->level);
     } else if( chkcc(kind,"PBM ") ) {
-        printf("%d:->PBM\n", ctx->level);
     } else if( chkcc(kind,"ANIM") ) {
-        printf("%d:->ANIM\n", ctx->level );
     } else {
         // unsupported FORM type (eg 8SVX sound)- skip it
-        printf("skip FORM %c%c%c%c\n", kind[0], kind[1], kind[2], kind[3]);
+        printf("%s->skip\n", indent(ctx->level+1));
         if(im_seek(rdr,remaining, SEEK_CUR) != 0 ) {
             *err = ERR_FILE;
             return false;
@@ -192,13 +192,12 @@ static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
     }
 
     while (remaining>0) {
-        printf("remaining: %d\n",remaining);
-        int childchunklen = parse_chunk(child,rdr,err);
-        if (childchunklen < 0) {
+        int n = parse_chunk(child,rdr,err);
+        if (n < 0) {
             // child already owned by ctx, so don't need to clean it up here
             return false;
         }
-        remaining -= childchunklen;
+        remaining -= n;
     }
     return true;
 }
@@ -267,8 +266,11 @@ static bool handle_CMAP(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
     return true;
 }
 
+
+// TODO: FIX! Not reading right num of bytes!
 static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *err )
 {
+    int consumed = 0;
     int words_per_line, bytes_per_line, data_size;
     BitMapHeader* bmhd = &ctx->bmhd;
 
@@ -277,6 +279,12 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
     // decode DLTA chunks.
 
     if (!ctx->got_bmhd) {
+        *err = ERR_MALFORMED;   // got BODY before BMHD
+        return false;
+    }
+
+    if (ctx->bmhd.masking !=0) {
+        printf("MASKING=%d\n",ctx->bmhd.masking );
         *err = ERR_MALFORMED;   // got BODY before BMHD
         return false;
     }
@@ -313,6 +321,7 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
             *err = ERR_MALFORMED;
             return false;
         }
+        consumed += data_size;
     } else if (bmhd->compression == cmpByteRun1) {
         uint8_t* dest = ctx->image_data;
         int y;
@@ -320,26 +329,40 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
         // but can run across planes.
         // TODO: I think the mask is included in the run
         for (y=0; y<bmhd->h; ++y) {
-            if (!decodeLine(rdr,dest,bytes_per_line)) {
+            int n = decodeLine(rdr,dest,bytes_per_line);
+            if (n<0) {
                 *err = ERR_MALFORMED;
                 return false;
             }
+            consumed += n;
             dest += bytes_per_line;
         }
     }
+
+
+    if( consumed<chunklen) {
+        printf("%s*** warn: decode left %d bytes\n", indent(ctx->level), chunklen-consumed);
+        if (im_seek(rdr,chunklen-consumed, SEEK_CUR) != 0 ) {
+            return false;
+        }
+    }
+
+
 
     return true;
 }
 
 
 // decode a line of ILBM BODY compression
-static bool decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
+static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
 {
+    int consumed = 0;
     while (nbytes>0) {
         uint8_t c = im_read_u8(rdr);
         if(im_error(rdr)) {
-            return false;
+            return -1;
         }
+        consumed++;
         if( c==128) {
             break;
         }
@@ -354,6 +377,7 @@ static bool decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
             if(im_error(rdr)) {
                 return false;
             }
+            consumed++;
             for (i=0; i<cnt; ++i) {
                 *dest++ = v;
             }
@@ -361,17 +385,18 @@ static bool decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
         } else {
             int cnt = c+1;
             if (nbytes<cnt) {
-                return false;   // overrun
+                return -1;   // overrun
             }
             if (im_read( rdr, dest, cnt) != cnt) {
-                return false;
+                return -1;
             }
+            consumed += cnt;
             dest += cnt;
             nbytes -= cnt;
         }
     }
-//    printf("%d bytes left over\n",nbytes);
-    return true;
+//    printf("%d bytes left empty\n",nbytes);
+    return consumed;
 }
 
 
@@ -397,24 +422,26 @@ static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 // process a single chunk and all it's children, returns num of bytes consumed (excluding any pad byte)
 static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
     uint8_t buf[8];
+    uint32_t chunklen;
     bool success;
+    int consumed = 0;
     if(im_read(rdr, buf,8) != 8) {
             printf("POO1\n");
         *err = ERR_MALFORMED;   // TODO: distingush between read error and eof
         return -1;
     }
-    uint32_t chunklen = ((uint32_t)buf[4])<<24 |
+    consumed += 8;
+    chunklen = ((uint32_t)buf[4])<<24 |
         ((uint32_t)buf[5])<<16 |
         ((uint32_t)buf[6])<<8 |
         ((uint32_t)buf[7]);
 
-
-    printf("%d:%c%c%c%c (%d bytes)\n", ctx->level, buf[0], buf[1], buf[2], buf[3], chunklen );
+    printf("%s%c%c%c%c (%d bytes)\n", indent(ctx->level), buf[0], buf[1], buf[2], buf[3], chunklen );
     if (chkcc(buf,"FORM")) {
-        printf("%d: enter FORM\n", ctx->level);
+//        printf("%d: enter FORM\n", ctx->level);
         // FORM chunks have children
         success = handle_FORM(ctx,rdr,chunklen, err);
-        printf("%d: exit FORM (%d)\n", ctx->level, success?1:0);
+//        printf("%d: exit FORM (%d)\n", ctx->level, success?1:0);
     } else if (chkcc(buf,"BMHD")) {
         success = handle_BMHD(ctx,rdr,chunklen, err);
     } else if (chkcc(buf,"CMAP")) {
@@ -440,6 +467,8 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
         return -1;
     }
 
+    consumed += chunklen;
+
     if (chunklen&1) {
         // read the pad byte
         if (im_seek(rdr, 1, SEEK_CUR)!=0) {
@@ -447,15 +476,23 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
             printf("POO3\n");
             return -1;
         }
+        consumed += 1;
     }
 
     // +8 to account for chunk header
-    return (int)8+chunklen;
+    return (int)consumed;
 }
 
 
 static im_bundle* read_iff_bundle( im_reader* rdr, ImErr* err )
 {
+    /*
+    dump_chunk(0,rdr);
+    *err = (ImErr)69;
+    return false;
+    */
+
+
     im_bundle* bundle = NULL;
 
     // TODO: could do away with root context perhaps...
@@ -582,4 +619,82 @@ static im_img* ctx_ilbm_to_img(context* ctx, ImErr* err)
 
     return img;
 }
+
+
+#define MAXINDENT 16
+static const char* indent( int n ) {
+    static char buf[(MAXINDENT*2)+1] = {0};
+    int i;
+    if(buf[0]==0) {
+        // init
+        for( i=0; i<(MAXINDENT*2); ++i) {
+            buf[i] = ' ';
+        }
+    }
+    if (n>MAXINDENT) {
+        n=MAXINDENT;
+    }
+
+    return buf + (MAXINDENT-n)*2;
+}
+
+
+int dump_chunk( int nest, im_reader *rdr )
+{
+
+    uint8_t kind[4];
+    uint32_t len;
+    int consumed = 0;
+    if( im_read(rdr, kind, 4)!=4) {
+        printf("ERR reading fourCC (eof=%d)\n", im_eof(rdr));
+        return -1;
+    }
+    len = im_read_u32be(rdr);
+    if (im_error(rdr)) {
+        printf("ERR2\n");
+        return -1;
+    }
+    consumed += 8;
+
+    printf("%s%c%c%c%c (%d bytes)\n", indent(nest), kind[0], kind[1], kind[2], kind[3], len);
+    if(chkcc(kind,"FORM")) {
+        char ft[4];
+        int remaining = len;
+        if( !im_read(rdr, ft, 4)) {
+            printf("ERR reading form type\n");
+            return -1;
+        }
+        printf("%sformtype=%c%c%c%c\n", indent(nest+1), ft[0], ft[1], ft[2], ft[3]);
+        consumed += 4;
+        remaining -= 4;
+        while(remaining>0) {
+            int n = dump_chunk(nest+1,rdr);
+            if( n<0) {
+                printf("ERR dump_failed (%d remaining)\n", remaining);
+                return -1;
+            }
+            remaining -= n;
+            consumed += n;
+        }
+    } else {
+        if( im_seek(rdr, len, SEEK_CUR) != 0 ) {
+            printf("ERR skipping chunk\n");
+            return -1;
+        }
+        consumed += len;
+    }
+
+    // handle even-padding rule
+    if( len&1) {
+        if( im_seek(rdr, 1, SEEK_CUR) != 0 ) {
+            printf("ERR skipping padbyte\n");
+            return false;
+        }
+        printf("%spad\n", indent(nest));
+        consumed += 1;
+    }
+    return consumed;
+}
+
+
 
