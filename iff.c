@@ -3,6 +3,11 @@
 
 #include <string.h>
 
+
+// Good collection of anims to test with at:
+// http://www.randelshofer.ch/animations/
+
+
 // mask values
 #define mskNone	0
 #define mskHasMask	1
@@ -24,6 +29,32 @@ typedef struct {
 	uint8_t xAspect, yAspect;	/* pixel aspect, a ratio width : height	*/
 	int16_t  pageWidth, pageHeight;	/* source "page" size in pixels	*/
 	} BitMapHeader;
+
+typedef struct {
+    uint8_t operation;     /*  The compression method:
+                            =0 set directly (normal ILBM BODY),
+                            =1 XOR ILBM mode,
+                            =2 Long Delta mode,
+                            =3 Short Delta mode,
+                            =4 Generalized short/long Delta mode,
+            			    =5 Byte Vertical Delta mode
+			                =7 short/long Vertical Delta mode
+                            =74 (ascii 'J') reserved for Eric Graham's
+                               compression technique (details to be
+                               released later).
+                               */
+    uint8_t mask;         /* XOR mode only */
+    uint16_t w,h;
+    int16_t  x,y;
+    uint32_t abstime;
+    uint32_t reltime;      /* in jiffies */
+    uint8_t interleave;
+    uint8_t pad0;
+    uint32_t bits;
+    uint8_t pad[16];
+} AnimHeader;
+
+
 
 
 typedef struct context context;
@@ -47,6 +78,9 @@ typedef struct context {
     uint8_t* mask_data;
     uint8_t* cmap_data;
     int cmap_len;
+
+    bool got_anhd;
+    AnimHeader anhd;
 } context;
 
 
@@ -230,7 +264,7 @@ static bool handle_BMHD(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
         *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
-
+    printf("%s %dx%d planes: %d masking: %d compression: 0x%02x\n", indent(ctx->level), bmhd->w, bmhd->h, bmhd->nPlanes, bmhd->masking, bmhd->compression);
     ctx->got_bmhd = true;
     return true;
 }
@@ -403,10 +437,37 @@ static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
 
 static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err)
 {
-    if(im_seek(rdr,chunklen,SEEK_CUR)!=0) {
-        *err = ERR_FILE;
+    AnimHeader* anhd = &ctx->anhd;
+    anhd->operation = im_read_u8(rdr);
+    anhd->mask = im_read_u8(rdr);
+    anhd->w = im_read_u16be(rdr);
+    anhd->h = im_read_u16be(rdr);
+    anhd->x = im_read_s16be(rdr);
+    anhd->y = im_read_s16be(rdr);
+    anhd->abstime = im_read_u32be(rdr);
+    anhd->reltime = im_read_u32be(rdr);
+    anhd->interleave = im_read_u8(rdr);
+    anhd->pad0 = im_read_u8(rdr);
+    anhd->bits = im_read_u32be(rdr);
+    im_read(rdr,anhd->pad,16);
+
+    if(im_error(rdr)) {
+        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
+    printf("%s op: 0x%02x mask: 0x%02x %d,%d %dx%d reltime: %d interleave: 0x%02x, bits: 0x%08x\n",
+        indent(ctx->level),
+        anhd->operation,
+        anhd->mask,
+        anhd->x,
+        anhd->y,
+        anhd->w,
+        anhd->h,
+        anhd->reltime,
+        anhd->interleave,
+        anhd->bits);
+
+    ctx->got_anhd = true;    
     return true;
 }
 
@@ -436,7 +497,7 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
         ((uint32_t)buf[6])<<8 |
         ((uint32_t)buf[7]);
 
-    printf("%s%c%c%c%c (%d bytes)\n", indent(ctx->level), buf[0], buf[1], buf[2], buf[3], chunklen );
+    printf("%s%c%c%c%c [%d bytes]\n", indent(ctx->level), buf[0], buf[1], buf[2], buf[3], chunklen );
     if (chkcc(buf,"FORM")) {
 //        printf("%d: enter FORM\n", ctx->level);
         // FORM chunks have children
@@ -537,7 +598,6 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
 {
     int i;
     im_img* img = NULL;
-printf("collect (level %d)\n", ctx->level);
     if (chkcc(ctx->kind,"ILBM") ) {
         img = ctx_ilbm_to_img(ctx, err);
         if (img) {
@@ -550,8 +610,7 @@ printf("collect (level %d)\n", ctx->level);
             }
             return true;    // BAIL OUT AFTER 1ST IMAGE
         } else {
-            printf("img fail\n");
-            return false;
+            printf("bad img\n");
         }
     }
 
