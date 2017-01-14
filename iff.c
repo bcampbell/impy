@@ -56,19 +56,6 @@ typedef struct {
 
 
 
-
-typedef struct context context;
-typedef struct frame frame;
-
-
-typedef struct context {
-//    char kind[4];       // "ILBM", "PBM ", "ANIM" (or "root")
-    int level;
-    frame** frames;
-    int nframes;
-    int capacity;
-} context;
-
 typedef struct frame {
     int num;    // which frame number this one is (ie index in ctx->frames[])
     char kind[4];   // ILBM or PBM
@@ -82,7 +69,19 @@ typedef struct frame {
 
     bool got_anhd;
     AnimHeader anhd;
+
 } frame;
+
+typedef struct context {
+//    char kind[4];       // "ILBM", "PBM ", "ANIM" (or "root")
+    int level;
+    frame** frames;
+    int nframes;
+    int capacity;
+    // a general-purpose buffer
+    uint8_t* buf;
+    size_t bufsize;
+} context;
 
 static im_img* frame_to_img(frame* f, ImErr* err);
 
@@ -90,6 +89,24 @@ static context* ctx_new() {
     context* ctx = imalloc(sizeof(context));
     memset(ctx,0,sizeof(context));
     return ctx;
+}
+
+static bool ctx_size_buffer(context* ctx, size_t newsize) {
+    if (newsize < ctx->bufsize) {
+        return true;    // big enough already
+    }
+
+    if (ctx->buf) {
+        ifree(ctx->buf);
+    }
+    ctx->buf = imalloc(newsize);
+    if (!ctx->buf) {
+        ctx->bufsize = 0;
+        return false;
+    }
+
+    ctx->bufsize = newsize;
+    return true;
 }
 
 static frame* ctx_add_frame(context* ctx, const char* kind) 
@@ -145,6 +162,9 @@ static void ctx_free(context* ctx)
         }
         ifree(ctx->frames);
     }
+    if( ctx->buf) {
+        ifree(ctx->buf);
+    }
     ifree(ctx);
 }
 
@@ -166,6 +186,9 @@ static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 
 static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes);
+static bool decodeANIM5chunk(const uint8_t* src, size_t chunklen, uint8_t* dest,
+        int ncols, int nplanes, int height);
+
 static im_img* ctx_ilbm_to_img(context* ctx, ImErr* err) ;
 static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err);
 
@@ -374,6 +397,8 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
         return false;
     }
 
+    // TODO: just slurp chunk into ctx->buf and decode from memory
+
     // actual image data must be multiple of 16 pixels wide
     words_per_line = (f->bmhd.w+15)/16;
     bytes_per_line = f->bmhd.nPlanes * (words_per_line*2);
@@ -420,6 +445,7 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
 
 
 // decode a line of ILBM BODY compression
+// TODO: make this memory-based
 static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
 {
     int consumed = 0;
@@ -513,12 +539,125 @@ static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 
 static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err)
 {
-    if(im_seek(rdr,chunklen,SEEK_CUR)!=0) {
-        *err = ERR_FILE;
+    frame* first;
+    frame* cur;
+    frame* from;    //
+    int fromidx;
+    int wordswide;
+    int image_size;
+    int height;
+    int nplanes;
+    int num_cols;
+
+    if( !ctx_size_buffer(ctx,chunklen)) {
+        *err = ERR_NOMEM;
+        return false;
+    }
+
+    if(im_read(rdr,ctx->buf,chunklen)!=chunklen) {
+        *err = im_eof(rdr) ? ERR_MALFORMED: ERR_FILE;
+        return false;
+    }
+
+    if (ctx->nframes < 1) {
+        *err = ERR_MALFORMED;
+        return false;
+    }
+
+    first = ctx->frames[0];
+    cur = ctx_curframe(ctx);
+    if (!first || !cur || !first->got_bmhd || !cur->got_anhd) {
+        *err = ERR_MALFORMED;
+        return false;
+    }
+
+    if (cur->anhd.operation != 0x05) {
+        // we currently only handle ANIM5
+        *err = ERR_UNSUPPORTED;
+        return false;
+    }
+
+
+    // first, copy the frame we're deltaing from...
+    if (cur->anhd.interleave==0) {
+        fromidx = cur->num - 2;       // default is two frames back
+    } else {
+        fromidx = cur->num - cur->anhd.interleave;
+    }
+    printf("copy from frame %d\n",fromidx);
+    if (fromidx<0) {
+        fromidx = 0;
+//        *err = ERR_MALFORMED;
+ //       return false;
+    }
+
+    from = ctx->frames[fromidx];
+    if(!from->image_data) {
+        *err = ERR_MALFORMED;
+        return false;
+    } 
+    wordswide = (first->bmhd.w +15)/16;
+    height = first->bmhd.h;
+    nplanes = first->bmhd.nPlanes;
+    image_size = (wordswide*2)*nplanes*height;
+    cur->image_data = imalloc(image_size);
+    if (!cur->image_data) {
+        *err = ERR_NOMEM;
+        return false;
+    }
+    memcpy(cur->image_data, from->image_data, image_size);
+
+
+
+    // TODO: copy/merge the colourmap
+    cur->cmap_data = imalloc(first->cmap_len);
+    cur->cmap_len  = first->cmap_len;
+    memcpy( cur->cmap_data, first->cmap_data, first->cmap_len);
+
+
+    // now decode the delta upon the image
+    num_cols = (first->bmhd.w + 7)/8;   // TODO: should be wordswide*2 ?
+    if (!decodeANIM5chunk(ctx->buf, chunklen,
+        cur->image_data,
+        num_cols,
+        first->bmhd.nPlanes,
+        first->bmhd.h))
+    {
+        *err = ERR_MALFORMED;
         return false;
     }
     return true;
 }
+
+
+static bool decodeANIM5chunk(const uint8_t* src, size_t chunklen, uint8_t* dest,
+        int ncols, int nplanes, int height)
+{
+#if 0
+    // decode!
+    {
+        for (plane=0; plane<first->bmhd.nPlanes; ++plane) {
+            unit8_t src = cur->image_data + 
+            for (col=0; col<num_cols; ++col) {
+                //decode Column
+            }
+        }
+    }
+
+    // fetch
+    // <128 :skip
+    // 0, cnt, val : repeat val cnt times
+    // <=128 : copy (n & 0x7f) bytes
+
+#endif
+    return true;
+}
+
+
+
+
+
+
 
 // process a single chunk and all it's children, returns num of bytes consumed (excluding any pad byte)
 static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
@@ -647,7 +786,6 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
                 *err = ERR_NOMEM;
                 return false;
             }
-            return true;    // BAIL OUT AFTER 1ST IMAGE
         } else {
             return false;
         }
