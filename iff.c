@@ -615,7 +615,7 @@ static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 
 
     // now decode the delta upon the image
-    num_cols = (first->bmhd.w + 7)/8;   // TODO: should be wordswide*2 ?
+    num_cols = ((first->bmhd.w + 15)/16)*2;   // NOTE: always even number of cols
     if (!decodeANIM5chunk(ctx->buf, chunklen,
         cur->image_data,
         num_cols,
@@ -637,8 +637,6 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
     uint32_t start[8];
     int pitch = ncols*nplanes;  // dest: bytes per line
 
-
-
     // first, unpack the 8 src pointers (and ignore 8 unused ones)
     if (srclen<16*4) {
         return false;
@@ -649,6 +647,8 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
         start[plane] = (p[0]<<24) | (p[1]<<16) | (p[2]<<8) | p[3]; 
         printf("plane %d @ 0x%08x\n",plane,start[plane]);
     }
+
+    // dump
     int j;
     for( j=0; j<srclen; ++j) {
         if( (j&7) == 0 ) {
@@ -660,10 +660,11 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
 
     for (plane=0; plane<nplanes; ++plane) {
         pos = start[plane];
-
-
-        // TODO: READ OPCOUNT! first byte, says how many ops in column
         printf("plane %d (pos %d)\n", plane,pos);
+        if (!pos) {
+            continue;
+        }
+
         int col;
         int y;
         uint8_t op;
