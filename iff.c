@@ -83,7 +83,6 @@ typedef struct context {
     size_t bufsize;
 } context;
 
-static im_img* frame_to_img(frame* f, ImErr* err);
 
 static context* ctx_new() {
     context* ctx = imalloc(sizeof(context));
@@ -189,7 +188,7 @@ static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes);
 static bool decodeANIM5chunk(const uint8_t* src, size_t chunklen, uint8_t* dest,
         int ncols, int nplanes, int height);
 
-static im_img* ctx_ilbm_to_img(context* ctx, ImErr* err) ;
+static im_img* frame_to_img(context* ctx, int frameidx, ImErr* err);
 static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err);
 
 static const char* indent( int n );
@@ -584,12 +583,12 @@ static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
     } else {
         fromidx = cur->num - cur->anhd.interleave;
     }
-    printf("copy from frame %d\n",fromidx);
     if (fromidx<0) {
         fromidx = 0;
 //        *err = ERR_MALFORMED;
  //       return false;
     }
+    printf("copy from frame %d\n",fromidx);
 
     from = ctx->frames[fromidx];
     if(!from->image_data) {
@@ -630,20 +629,107 @@ static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 }
 
 
-static bool decodeANIM5chunk(const uint8_t* src, size_t chunklen, uint8_t* dest,
+static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
         int ncols, int nplanes, int height)
 {
-#if 0
-    // decode!
-    {
-        for (plane=0; plane<first->bmhd.nPlanes; ++plane) {
-            unit8_t src = cur->image_data + 
-            for (col=0; col<num_cols; ++col) {
-                //decode Column
+    int plane;
+    uint32_t pos;
+    uint32_t start[8];
+    int pitch = ncols*nplanes;  // dest: bytes per line
+
+
+
+    // first, unpack the 8 src pointers (and ignore 8 unused ones)
+    if (srclen<16*4) {
+        return false;
+    }
+
+    for (plane=0; plane<nplanes; ++plane) {
+        const uint8_t* p = src + plane*4;
+        start[plane] = (p[0]<<24) | (p[1]<<16) | (p[2]<<8) | p[3]; 
+        printf("plane %d @ 0x%08x\n",plane,start[plane]);
+    }
+    int j;
+    for( j=0; j<srclen; ++j) {
+        if( (j&7) == 0 ) {
+            printf("\n%08x: ",j);
+        }
+        printf("%02x ",src[j]);
+    }
+    printf("\n");
+
+    for (plane=0; plane<nplanes; ++plane) {
+        pos = start[plane];
+
+
+        // TODO: READ OPCOUNT! first byte, says how many ops in column
+        printf("plane %d (pos %d)\n", plane,pos);
+        int col;
+        int y;
+        uint8_t op;
+        for (col=0; col<ncols; ++col) {
+            uint8_t* out = dest + (ncols*plane) + col;
+            int opcnt;
+            int i;
+            if (pos+1>srclen) {
+                printf("expect more cols\n");
+                return false;
+            }
+            opcnt = (int)src[pos++];
+
+            printf(" col %d/%d (%d ops)\n", col, ncols, opcnt);
+            y=0;
+            for (i=0; i<opcnt; ++i) {
+                printf("  y=%d\n", y);
+                if (pos+1 > srclen) {
+                    return false;
+                }
+                op = src[pos++];
+                if (op==0) {
+                    uint8_t cnt,val;
+                    // repeat
+                    if (pos+2 > srclen) {
+                        return false;
+                    }
+                    cnt = src[pos++];
+                    val = src[pos++];
+                    printf("    rep %d %d\n", cnt,val);
+                    if (y+cnt > height) {
+                        return false;
+                    }
+                    while (cnt>0) {
+                        *out = val;
+                        out += pitch;
+                        ++y;
+                        --cnt;
+                    }
+                } else if (op<128) {
+                    // skip
+                    int cnt = (int)op;
+                    printf("    skip %d\n", cnt);
+                    if (y+cnt > height) {
+                        return false;
+                    }
+                    out += pitch*cnt;
+                    y+=cnt;
+                } else if (op>=128) {
+                    int cnt = (int)(op&0x7f);
+                    printf("    uniq %d\n", cnt);
+                    if (pos+cnt > srclen || y+cnt > height ) {
+                        return false;
+                    }
+                    while (cnt>0) {
+                        *out = src[pos++];
+                        out += pitch;
+                        --cnt;
+                        ++y;
+                    }
+                }
             }
         }
     }
 
+#if 0
     // fetch
     // <128 :skip
     // 0, cnt, val : repeat val cnt times
@@ -777,11 +863,11 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
     im_img* img = NULL;
     for (i=0; i<ctx->nframes; ++i) {
         frame* f = ctx->frames[i];
-        img = frame_to_img(f, err);
+        printf("add frame %d\n", i);
+        img = frame_to_img(ctx, i, err);
         if (img) {
             SlotID id = {0};
             id.frame = f->num;
-            printf("add frame %d\n", id.frame);
             if (!im_bundle_set(out,id,img)) {
                 *err = ERR_NOMEM;
                 return false;
@@ -794,15 +880,23 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
     return true;
 }
 
-static im_img* frame_to_img(frame* f, ImErr* err)
+static im_img* frame_to_img(context* ctx, int frameidx, ImErr* err)
 {
     int y;
     int plane_pitch;
-    BitMapHeader* bmhd = &f->bmhd;
-    if( !f->got_bmhd || !f->image_data) {
+    frame* f;
+    frame* first;
+    BitMapHeader* bmhd;
+
+    f = ctx->frames[frameidx];
+    first = ctx->frames[0];
+
+    if( !first->got_bmhd || !f->image_data) {
         *err = ERR_MALFORMED;
         return NULL;
     }
+
+    bmhd = &first->bmhd;
 
     // TODO:
     if( bmhd->nPlanes>8) {
