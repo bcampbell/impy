@@ -921,24 +921,35 @@ static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data
         return NULL;
     }
 
-    plane_pitch = 2*((bmhd->w+15)/16);
-    // convert planar data to 8bit indexed
-    // TODO: handle/skip mask plane!
-    for (y=0; y<bmhd->h; ++y) {
-        uint8_t* dest = im_img_row(img,y);
-        int x;
-        for( x=0; x<bmhd->w; ++x) {
-            uint8_t pix=0;
-            const uint8_t* src = f->image_data + (y*plane_pitch*bmhd->nPlanes) + x/8;
-            int srcbit = 7 - (x&7);
-            int destbit;
-            for(destbit = 0; destbit<bmhd->nPlanes; ++destbit) {
-                *dest |= (((*src) >> srcbit)&0x01)<<destbit;
-                src += plane_pitch;
+    if (chkcc(f->kind,"ILBM")) {
+
+        int plane_pitch = 2*((bmhd->w+15)/16);
+        // convert planar data to 8bit indexed
+        // TODO: handle/skip mask plane!
+        for (y=0; y<bmhd->h; ++y) {
+            uint8_t* dest = im_img_row(img,y);
+            int x;
+            for( x=0; x<bmhd->w; ++x) {
+                uint8_t pix=0;
+                const uint8_t* src = f->image_data + (y*plane_pitch*bmhd->nPlanes) + x/8;
+                int srcbit = 7 - (x&7);
+                int destbit;
+                for(destbit = 0; destbit<bmhd->nPlanes; ++destbit) {
+                    *dest |= (((*src) >> srcbit)&0x01)<<destbit;
+                    src += plane_pitch;
+                }
+                ++dest;
             }
-            ++dest;
+        }
+    } else if (chkcc(f->kind,"PBM ")) {
+        const uint8_t* src = f->image_data;
+        for (y=0; y<bmhd->h; ++y) {
+            memcpy(im_img_row(img,y), src, bmhd->w);
+            src += bmhd->w;
         }
     }
+
+
 
     // install palette (note: ignore any cmap data that might be in
     // current frame - the caller has already handled it)
