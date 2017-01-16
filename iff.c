@@ -188,7 +188,7 @@ static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes);
 static bool decodeANIM5chunk(const uint8_t* src, size_t chunklen, uint8_t* dest,
         int ncols, int nplanes, int height);
 
-static im_img* frame_to_img(context* ctx, int frameidx, ImErr* err);
+static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data, size_t cmap_len, ImErr* err);
 static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err);
 
 static const char* indent( int n );
@@ -606,13 +606,7 @@ static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
     }
     memcpy(cur->image_data, from->image_data, image_size);
 
-
-
-    // TODO: copy/merge the colourmap
-    cur->cmap_data = imalloc(first->cmap_len);
-    cur->cmap_len  = first->cmap_len;
-    memcpy( cur->cmap_data, first->cmap_data, first->cmap_len);
-
+    // leave the colourmaps for now - handle later, during im_img generation.
 
     // now decode the delta upon the image
     num_cols = ((first->bmhd.w + 15)/16)*2;   // NOTE: always even number of cols
@@ -861,11 +855,25 @@ bailout:
 static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
 {
     int i;
+    uint8_t cmap_buf[3*256];
+    size_t cmap_len = 0;
     im_img* img = NULL;
     for (i=0; i<ctx->nframes; ++i) {
         frame* f = ctx->frames[i];
         printf("add frame %d\n", i);
-        img = frame_to_img(ctx, i, err);
+
+        // track latest cmap as we go
+        if (f->cmap_data) {
+            if (f->cmap_len>sizeof(cmap_buf)) {
+                *err = ERR_MALFORMED;
+            }
+            memcpy(cmap_buf, f->cmap_data, f->cmap_len);
+            if( f->cmap_len>cmap_len) {
+                cmap_len = f->cmap_len;
+            }
+        }
+
+        img = frame_to_img(ctx, i, cmap_buf, cmap_len, err);
         if (img) {
             SlotID id = {0};
             id.frame = f->num;
@@ -881,7 +889,7 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
     return true;
 }
 
-static im_img* frame_to_img(context* ctx, int frameidx, ImErr* err)
+static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data, size_t cmap_len, ImErr* err)
 {
     int y;
     int plane_pitch;
@@ -890,6 +898,7 @@ static im_img* frame_to_img(context* ctx, int frameidx, ImErr* err)
     BitMapHeader* bmhd;
 
     f = ctx->frames[frameidx];
+    // need the BMHD chunk from the first frame
     first = ctx->frames[0];
 
     if( !first->got_bmhd || !f->image_data) {
@@ -914,7 +923,7 @@ static im_img* frame_to_img(context* ctx, int frameidx, ImErr* err)
 
     plane_pitch = 2*((bmhd->w+15)/16);
     // convert planar data to 8bit indexed
-    // TODO: handle mask plane!
+    // TODO: handle/skip mask plane!
     for (y=0; y<bmhd->h; ++y) {
         uint8_t* dest = im_img_row(img,y);
         int x;
@@ -931,10 +940,11 @@ static im_img* frame_to_img(context* ctx, int frameidx, ImErr* err)
         }
     }
 
-    // install palette
+    // install palette (note: ignore any cmap data that might be in
+    // current frame - the caller has already handled it)
     // TODO: pad out to at least 2^nPlanes entries
-    if (f->cmap_data) {
-        if( !im_img_pal_set(img, PALFMT_RGB, f->cmap_len/3, f->cmap_data) ) {
+    if (cmap_data) {
+        if( !im_img_pal_set(img, PALFMT_RGB, cmap_len/3, cmap_data) ) {
             *err = ERR_NOMEM;
             im_img_free(img);
             return NULL;
