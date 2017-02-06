@@ -5,6 +5,9 @@
 #include <limits.h>
 #include <gif_lib.h>
 
+// Imagemagick has some good details on gif animation:
+// http://www.imagemagick.org/Usage/anim_basics/
+
 // TODO: check GIFLIB_MAJOR version >= 5
 
 static ImErr translate_err( int gif_err_code );
