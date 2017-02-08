@@ -68,7 +68,7 @@ typedef struct im_img_impl {
     int (*depth)(const im_img *);
     ImFmt (*format)(const im_img *);
     ImDatatype (*datatype)(const im_img *);
-    void* (*row)(const im_img *, int);
+    void* (*pos)(const im_img *, int, int);
     int (*pitch)(const im_img *);
 
     // image palette fns
@@ -254,11 +254,14 @@ static inline ImFmt im_img_format(const im_img *img)
 static inline ImDatatype im_img_datatype(const im_img *img)
     { return im_current_img_impl->datatype(img); }
 
-static inline void* im_img_row(const im_img *img, int row)
-    { return im_current_img_impl->row(img,row); }
+static inline void* im_img_pos(const im_img *img, int x, int y)
+    { return im_current_img_impl->pos(img,x,y); }
 
 static inline int im_img_pitch(const im_img *img)
     { return im_current_img_impl->pitch(img); }
+
+static inline void* im_img_row(const im_img *img, int row)
+    { return im_img_pos(img,0,row); }
 
 // TODO: metadata access...
 

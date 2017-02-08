@@ -18,6 +18,7 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr* err );
 static bool write_gif_bundle(im_bundle* bundle, im_writer* out, ImErr* err);
 
 struct handler handle_gif = {is_gif, NULL, read_gif_bundle, match_gif_ext, NULL, write_gif_bundle};
+static bool decode( GifFileType* gif, im_img* destimg, int destx, int desty );
 
 static ImErr translate_err( int gif_err_code )
 {
@@ -34,6 +35,7 @@ static ImErr translate_err( int gif_err_code )
  **************/
 
 struct readstate {
+    bool coalesce;
     GifFileType *gif;
 
     // the currently-active gcb data, if any
@@ -88,6 +90,7 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
     bool done=false;
     SlotID frame = {0};
 
+    state.coalesce = false; //true;
     state.gcb_valid = false;
     state.gif = DGifOpen( (void*)rdr, input_fn, &giferr);
     state.bundle = im_bundle_new();
@@ -147,11 +150,11 @@ bailout:
 }
 
 
+
+
 static im_img* read_image( struct readstate* state )
 {
     GifFileType* gif = state->gif;
-    int y;
-    int w,h;
     im_img *img=NULL;
 
     if (DGifGetImageDesc(gif) != GIF_OK) {
@@ -159,41 +162,38 @@ static im_img* read_image( struct readstate* state )
         goto bailout;
     }
 
-    w = gif->Image.Width;
-    h = gif->Image.Height;
+    if (state->coalesce) {
+        int nframes;
+        // all images occupy full virtual canvas
+        img = im_img_new((int)gif->SWidth,(int)gif->SHeight,1,FMT_COLOUR_INDEX, DT_U8);
+        if (!img) {
+            goto bailout;
+        }
+        // TODO: handle disposal
+        nframes = im_bundle_num_frames(state->bundle);
+        if ( nframes > 0 ) {
+            im_img* prev;
+            prev = im_bundle_get_frame(state->bundle,nframes-1);
+        }
 
-    img = im_img_new(w,h,1,FMT_COLOUR_INDEX, DT_U8);
-    //printf("image (%dx%d)\n", gif->Image.Width, gif->Image.Height);
-
-    if (gif->Image.Interlace) {
-        // GIF interlacing stores the lines in the order:
-        // 0, 8, 16, ...(8n)
-        // 4, 12, ...(8n+4)
-        // 2, 6, 10, 14, ...(4n+2)
-        // 1, 3, 5, 7, 9, ...(2n+1).
-        int offsets[4] = {0,4,2,1};
-        int jumps[4] = {8,8,4,2};
-        int pass;
-        for (pass=0; pass<4; ++pass) {
-            for(y=offsets[pass]; y<h; y+= jumps[pass]) {
-                uint8_t *dest = im_img_row(img,y);
-                if (DGifGetLine(gif, dest, w) != GIF_OK) {
-                    // TODO: set error?
-                    goto bailout;
-                }
-            }
+        if (!decode(gif, img, gif->Image.Left, gif->Image.Top)) {
+            goto bailout;
         }
     } else {
-        for (y=0; y<h; ++y) { 
-            uint8_t *dest = im_img_row(img,y);
-            if (DGifGetLine(gif, dest, w) != GIF_OK) {
-                // TODO: set error?
-                goto bailout;
-            }
+        // load each frame as separate image
+        img = im_img_new((int)gif->Image.Width, (int)gif->Image.Height,1,FMT_COLOUR_INDEX, DT_U8);
+        if (!img) {
+            goto bailout;
         }
+        if (!decode(gif,img,0,0)) {
+            goto bailout;
+        }
+        im_img_set_offset(img, (int)gif->Image.Left, (int)gif->Image.Top);
+        // TODO: record disposal details here
     }
+    //printf("image (%dx%d)\n", gif->Image.Width, gif->Image.Height);
 
-    // TODO: set GCB stuff here - delay, disposition etc
+
     // TODO: pass in transparent colour to apply_palette!
     if (gif->Image.ColorMap) {
         if (!apply_palette(img, gif->Image.ColorMap,-1)) {
@@ -215,6 +215,43 @@ bailout:
     }
     return NULL;
 }
+
+
+static bool decode( GifFileType* gif, im_img* destimg, int destx, int desty )
+{
+    int w = (int)gif->Image.Width;
+    int h = (int)gif->Image.Height;
+    int y;
+    if (gif->Image.Interlace) {
+        // GIF interlacing stores the lines in the order:
+        // 0, 8, 16, ...(8n)
+        // 4, 12, ...(8n+4)
+        // 2, 6, 10, 14, ...(4n+2)
+        // 1, 3, 5, 7, 9, ...(2n+1).
+        int offsets[4] = {0,4,2,1};
+        int jumps[4] = {8,8,4,2};
+        int pass;
+        for (pass=0; pass<4; ++pass) {
+            for(y=offsets[pass]; y<h; y+= jumps[pass]) {
+                uint8_t *dest = im_img_pos(destimg, destx+0, desty+y);
+                if (DGifGetLine(gif, dest, w) != GIF_OK) {
+                    // TODO: set error?
+                    return false;
+                }
+            }
+        }
+    } else {
+        for (y=0; y<h; ++y) { 
+            uint8_t *dest = im_img_pos(destimg, destx+0, desty+y);
+            if (DGifGetLine(gif, dest, w) != GIF_OK) {
+                // TODO: set error?
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 
 static bool read_extension( struct readstate* state )
 {

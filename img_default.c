@@ -138,10 +138,10 @@ static ImFmt image_fmt(const im_img *img)
 static ImDatatype image_datatype(const im_img *img)
     { return ((const struct image*)img)->datatype; }
 
-static void* image_row(const im_img *img, int row)
+static void* image_pos(const im_img *img, int x, int y)
 {
     const struct image* foo = (const struct image*)img;
-    return ((uint8_t*)(foo->pixel_data)) + (row*foo->pitch);
+    return ((uint8_t*)(foo->pixel_data)) + (y*foo->pitch) + (x*bpp(foo->format, foo->datatype));
 }
 
 static int image_pitch(const im_img *img)
@@ -214,7 +214,7 @@ im_img_impl im_default_img_impl = {
     image_d,
     image_fmt,
     image_datatype,
-    image_row,
+    image_pos,
     image_pitch,
 
     image_pal_set,
