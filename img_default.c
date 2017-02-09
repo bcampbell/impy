@@ -32,42 +32,6 @@ struct image {
 
 
 
-// calc bytes per pixel
-static int bpp(ImFmt fmt, ImDatatype datatype) {
-    int n=0;
-
-    switch (datatype) {
-        case DT_U8:
-        case DT_S8:
-            n=1;
-            break;
-        case DT_U16:
-        case DT_S16:
-        case DT_FLOAT16:
-            n=2;
-            break;
-        case DT_U32:
-        case DT_S32:
-        case DT_FLOAT32:
-            n=4;
-            break;
-        case DT_FLOAT64:
-            n=8;
-            break;
-    }
-
-    switch (fmt) {
-        case FMT_RGB: return 3*n;
-        case FMT_RGBA: return 4*n;
-        case FMT_BGR: return 3*n;
-        case FMT_BGRA: return 4*n;
-        case FMT_COLOUR_INDEX: return 1*n;
-        case FMT_ALPHA: return 1*n;
-        case FMT_LUMINANCE: return 1*n;
-    }
-    return 0;
-}
-
 
 im_img* image_create(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
 {
@@ -79,7 +43,7 @@ im_img* image_create(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
         return NULL;
     }
 
-    bytesPerPixel = bpp(fmt,datatype);
+    bytesPerPixel = im_bytesperpixel(fmt,datatype);
     if(bytesPerPixel==0) {
         return NULL;
     }
@@ -141,7 +105,7 @@ static ImDatatype image_datatype(const im_img *img)
 static void* image_pos(const im_img *img, int x, int y)
 {
     const struct image* foo = (const struct image*)img;
-    return ((uint8_t*)(foo->pixel_data)) + (y*foo->pitch) + (x*bpp(foo->format, foo->datatype));
+    return ((uint8_t*)(foo->pixel_data)) + (y*foo->pitch) + (x*im_bytesperpixel(foo->format, foo->datatype));
 }
 
 static int image_pitch(const im_img *img)

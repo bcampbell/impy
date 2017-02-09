@@ -1,7 +1,9 @@
 #include "im.h"
 #include "private.h"
 
+#include <assert.h>
 #include <stdio.h>
+#include <string.h>
 #include <limits.h>
 #include <gif_lib.h>
 
@@ -18,7 +20,6 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr* err );
 static bool write_gif_bundle(im_bundle* bundle, im_writer* out, ImErr* err);
 
 struct handler handle_gif = {is_gif, NULL, read_gif_bundle, match_gif_ext, NULL, write_gif_bundle};
-static bool decode( GifFileType* gif, im_img* destimg, int destx, int desty );
 
 static ImErr translate_err( int gif_err_code )
 {
@@ -47,11 +48,18 @@ struct readstate {
 
     //
     im_bundle *bundle;
+
+    // buffer to hold one line (only used for transparency)
+    uint8_t *linebuf;
 };
 
 static im_img* read_image(struct readstate *state);
 static bool read_extension(struct readstate *state);
 static bool apply_palette(im_img* img, ColorMapObject* cm, int transparent_idx);
+static bool decode( GifFileType* gif, im_img* destimg, int destx, int desty );
+static bool decode_trns( struct readstate* state, im_img* destimg, int destx, int desty, uint8_t trns );
+static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, int h);
+static void drawrect( im_img* img, int xo, int yo, int w, int h, uint8_t c);
 
 
 static int input_fn(GifFileType *gif, GifByteType *buf, int size)
@@ -90,12 +98,19 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
     bool done=false;
     SlotID frame = {0};
 
-    state.coalesce = false; //true;
+    state.coalesce = true; //true;
+    state.linebuf = NULL;
     state.gcb_valid = false;
     state.gif = DGifOpen( (void*)rdr, input_fn, &giferr);
     state.bundle = im_bundle_new();
+    // we need a buffer big enough to decode a line
     if (!state.gif) {
         *err = translate_err(giferr);
+        goto bailout;
+    }
+    state.linebuf = imalloc((size_t)state.gif->SWidth);
+    if (!state.linebuf) {
+        *err = ERR_NOMEM;
         goto bailout;
     }
 
@@ -139,11 +154,20 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
         goto bailout;
     }
 
+    if (state.linebuf) {
+        ifree(state.linebuf);
+        state.linebuf = NULL;
+    }
+
     return state.bundle;
 
 bailout:
     if (state.gif) {
         DGifCloseFile(state.gif, &giferr);
+    }
+    if (state.linebuf) {
+        ifree(state.linebuf);
+        state.linebuf = NULL;
     }
     im_bundle_free(state.bundle);
     return NULL;
@@ -163,21 +187,32 @@ static im_img* read_image( struct readstate* state )
     }
 
     if (state->coalesce) {
+        int w = (int)gif->SWidth;
+        int h = (int)gif->SHeight;
         int nframes;
         // all images occupy full virtual canvas
-        img = im_img_new((int)gif->SWidth,(int)gif->SHeight,1,FMT_COLOUR_INDEX, DT_U8);
+        img = im_img_new(w,h,1,FMT_COLOUR_INDEX, DT_U8);
         if (!img) {
             goto bailout;
         }
-        // TODO: handle disposal
         nframes = im_bundle_num_frames(state->bundle);
-        if ( nframes > 0 ) {
-            im_img* prev;
-            prev = im_bundle_get_frame(state->bundle,nframes-1);
+        if ( nframes == 0 ) {
+            drawrect( img,0,0,w,h, (uint8_t)gif->SBackGroundColor);
+        } else {
+            // TODO: handle disposal
+            im_img* prev = im_bundle_get_frame(state->bundle,nframes-1);
+            blit(prev,img,0,0,(int)gif->SWidth,(int)gif->SHeight);
         }
 
-        if (!decode(gif, img, gif->Image.Left, gif->Image.Top)) {
-            goto bailout;
+
+        if (!state->gcb_valid || state->gcb.TransparentColor == NO_TRANSPARENT_COLOR) {
+            if (!decode(gif, img, gif->Image.Left, gif->Image.Top)) {
+                goto bailout;
+            }
+        } else {
+            if (!decode_trns(state, img, gif->Image.Left, gif->Image.Top, (uint8_t)state->gcb.TransparentColor)) {
+                goto bailout;
+            }
         }
     } else {
         // load each frame as separate image
@@ -246,6 +281,57 @@ static bool decode( GifFileType* gif, im_img* destimg, int destx, int desty )
             if (DGifGetLine(gif, dest, w) != GIF_OK) {
                 // TODO: set error?
                 return false;
+            }
+        }
+    }
+    return true;
+}
+
+
+static bool decode_trns( struct readstate* state, im_img* destimg, int destx, int desty, uint8_t trns )
+{
+    GifFileType* gif = state->gif;
+    int w = (int)gif->Image.Width;
+    int h = (int)gif->Image.Height;
+    int x,y;
+    if (gif->Image.Interlace) {
+        // GIF interlacing stores the lines in the order:
+        // 0, 8, 16, ...(8n)
+        // 4, 12, ...(8n+4)
+        // 2, 6, 10, 14, ...(4n+2)
+        // 1, 3, 5, 7, 9, ...(2n+1).
+        int offsets[4] = {0,4,2,1};
+        int jumps[4] = {8,8,4,2};
+        int pass;
+        for (pass=0; pass<4; ++pass) {
+            for(y=offsets[pass]; y<h; y+= jumps[pass]) {
+                uint8_t *buf = state->linebuf;
+                uint8_t *dest = im_img_pos(destimg, destx+0, desty+y);
+                if (DGifGetLine(gif, buf, w) != GIF_OK) {
+                    return false;
+                }
+                for( x=0; x<w; ++x) {
+                    uint8_t c = *buf++;
+                    if (c!=trns) {
+                        *dest = c;
+                    }
+                    ++dest;
+                }
+            }
+        }
+    } else {
+        for (y=0; y<h; ++y) { 
+            uint8_t *buf = state->linebuf;
+            uint8_t *dest = im_img_pos(destimg, destx+0, desty+y);
+            if (DGifGetLine(gif, buf, w) != GIF_OK) {
+                return false;
+            }
+            for( x=0; x<w; ++x) {
+                uint8_t c = *buf++;
+                if (c!=trns) {
+                    *dest = c;
+                }
+                ++dest;
             }
         }
     }
@@ -322,6 +408,40 @@ static bool apply_palette(im_img* img, ColorMapObject* cm, int transparent_idx)
 }
 
 
+// copy an image onto another
+static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, int h)
+{
+    int x,y;
+    size_t rowbytes = w*im_img_bytesperpixel(src);
+
+    assert(destx >=0 && desty >=0);
+    assert( w <= im_img_w(src) && w <= im_img_w(dest));
+    assert( h <= im_img_h(src) && h <= im_img_h(dest));
+    assert( destx+w <= im_img_w(dest));
+    assert( desty+h <= im_img_h(dest));
+
+    assert( im_img_format(src) == im_img_format(dest));
+    assert( im_img_datatype(src) == im_img_datatype(dest));
+
+    for (y=0; y<h; ++y) {
+        memcpy( im_img_pos(dest,destx,desty+y), im_img_pos(src, 0,y), rowbytes);
+    }
+}
+
+static void drawrect( im_img* img, int xo, int yo, int w, int h, uint8_t c)
+{
+    assert( xo>=0 && yo>=0);
+    assert( xo+w <= im_img_w(img));
+    assert( yo+h <= im_img_h(img));
+    int x,y;
+
+    for (y=0; y<h; ++y) {
+        uint8_t* dest = im_img_pos(img,xo,yo+y);
+        for (x=0; x<w; ++x) {
+            *dest++ = c;
+        }
+    }
+}
 
 /***************
  * GIF WRITING

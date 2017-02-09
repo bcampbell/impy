@@ -237,6 +237,8 @@ static inline void im_img_free(im_img *img)
 
 extern im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
+extern size_t im_bytesperpixel(ImFmt fmt, ImDatatype datatype);
+
 // Image fns
 
 static inline int im_img_w(const im_img *img)
@@ -262,6 +264,10 @@ static inline int im_img_pitch(const im_img *img)
 
 static inline void* im_img_row(const im_img *img, int row)
     { return im_img_pos(img,0,row); }
+
+static inline size_t im_img_bytesperpixel(const im_img* img) {
+    return im_bytesperpixel(im_img_format(img), im_img_datatype(img));
+}
 
 // TODO: metadata access...
 
@@ -324,7 +330,7 @@ extern bool im_bundle_set(im_bundle* bundle, const SlotID id, im_img* img);
 
 // fetch an image from a bundle (NULL if not found)
 extern im_img* im_bundle_get(im_bundle* bundle, const SlotID id);
-extern SlotID im_bundle_extents(im_bundle* b);
+//extern SlotID im_bundle_extents(im_bundle* b);
 
 
 extern int im_bundle_num_frames(im_bundle* b);

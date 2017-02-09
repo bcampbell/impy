@@ -12,6 +12,44 @@ static void copy_pal_range( ImPalFmt src_fmt, const uint8_t* src, ImPalFmt dest_
 // the current im_img implementation
 im_img_impl* im_current_img_impl = &im_default_img_impl;
 
+// calc bytes per pixel
+size_t im_bytesperpixel(ImFmt fmt, ImDatatype datatype) {
+    int n=0;
+
+    switch (datatype) {
+        case DT_U8:
+        case DT_S8:
+            n=1;
+            break;
+        case DT_U16:
+        case DT_S16:
+        case DT_FLOAT16:
+            n=2;
+            break;
+        case DT_U32:
+        case DT_S32:
+        case DT_FLOAT32:
+            n=4;
+            break;
+        case DT_FLOAT64:
+            n=8;
+            break;
+    }
+
+    switch (fmt) {
+        case FMT_RGB: return 3*n;
+        case FMT_RGBA: return 4*n;
+        case FMT_BGR: return 3*n;
+        case FMT_BGRA: return 4*n;
+        case FMT_COLOUR_INDEX: return 1*n;
+        case FMT_ALPHA: return 1*n;
+        case FMT_LUMINANCE: return 1*n;
+    }
+    return 0;
+}
+
+
+
 
 bool im_img_pal_equal(const im_img* a, const im_img* b)
 {

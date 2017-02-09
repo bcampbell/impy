@@ -9,7 +9,11 @@ typedef struct slot {
 } slot;
 
 typedef struct im_bundle{
-    SlotID extents;
+    int nframes;
+    int nmipmaps;
+    int nlayers;
+    int nfaces;
+
     int capacity;
     int length;
     slot* slots;
@@ -59,7 +63,11 @@ im_bundle* im_bundle_new()
         return NULL;
     }
 
-    b->extents = slotid_ZERO;
+    b->nframes = 0;
+    b->nmipmaps = 0;
+    b->nlayers = 0;
+    b->nfaces = 0;
+
     b->length = 0;
     b->slots = imalloc(initialcap*sizeof(slot));
     b->capacity = initialcap;
@@ -149,32 +157,26 @@ bool im_bundle_set(im_bundle* b, const SlotID id, im_img* img)
     b->slots[idx].img = img;
 
     // update the maximum frame/mip/layer/face values
-    if (id.frame > b->extents.frame ) {
-        b->extents.frame = id.frame;
+    if (id.frame+1 > b->nframes ) {
+        b->nframes = id.frame+1;
     }
-    if (id.mipmap > b->extents.mipmap ) {
-        b->extents.mipmap = id.mipmap;
+    if (id.mipmap+1 > b->nmipmaps ) {
+        b->nmipmaps = id.mipmap+1;
     }
-    if (id.layer > b->extents.layer ) {
-        b->extents.layer = id.layer;
+    if (id.layer+1 > b->nlayers ) {
+        b->nlayers = id.layer+1;
     }
-    if (id.face > b->extents.face ) {
-        b->extents.face = id.face;
+    if (id.face+1 > b->nfaces ) {
+        b->nfaces = id.face+1;
     }
 
     return true;
 }
 
 
-
-SlotID im_bundle_extents(im_bundle* b)
-{
-    return b->extents;
-}
-
 int im_bundle_num_frames(im_bundle* b)
 {
-    return b->extents.frame + 1;
+    return b->nframes;
 }
 
 im_img* im_bundle_get_frame(im_bundle* b, int n)

@@ -152,10 +152,10 @@ bool set_frame(int n)
 
 void prev_frame()
 {
-    SlotID extents = im_bundle_extents(bundle);
+    int nframes = im_bundle_num_frames(bundle);
     int n = cur.frame - 1;
     if(n < 0 ) {
-        n = extents.frame;
+        n = nframes-1;
     }
     set_frame(n);
     show();
@@ -163,9 +163,9 @@ void prev_frame()
 
 void next_frame()
 {
-    SlotID extents = im_bundle_extents(bundle);
+    int nframes = im_bundle_num_frames(bundle);
     int n = cur.frame + 1;
-    if(n > extents.frame) {
+    if(n >= nframes) {
         n = 0;
     }
     set_frame(n);
