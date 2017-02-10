@@ -35,6 +35,10 @@ static ImErr translate_err( int gif_err_code )
  * GIF READING
  **************/
 
+struct rect {
+    int x,y,w,h;
+};
+
 struct readstate {
     bool coalesce;
     GifFileType *gif;
@@ -49,8 +53,15 @@ struct readstate {
     //
     im_bundle *bundle;
 
-    // buffer to hold one line (only used for transparency)
+    // buffer to hold one line (only used for transparency decode)
     uint8_t *linebuf;
+
+    // original (pre-coalesced) areas for frames N-1 and N-2
+    // need to track this for BACKGROUND and PREVIOUS disposal
+    im_img* prev;
+    struct rect prevrect;
+    im_img* prevprev;
+    struct rect prevprevrect;
 };
 
 static im_img* read_image(struct readstate *state);
@@ -103,6 +114,8 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
     state.gcb_valid = false;
     state.gif = DGifOpen( (void*)rdr, input_fn, &giferr);
     state.bundle = im_bundle_new();
+    state.prev = NULL;
+    state.prevprev = NULL;
     // we need a buffer big enough to decode a line
     if (!state.gif) {
         *err = translate_err(giferr);
@@ -134,6 +147,7 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
                     if( !im_bundle_set(state.bundle, frame, img) ) {
                         goto bailout;
                     }
+
                     ++frame.frame;
                 }
                 break;
@@ -195,15 +209,13 @@ static im_img* read_image( struct readstate* state )
         if (!img) {
             goto bailout;
         }
-        nframes = im_bundle_num_frames(state->bundle);
-        if ( nframes == 0 ) {
-            drawrect( img,0,0,w,h, (uint8_t)gif->SBackGroundColor);
-        } else {
-            // TODO: handle disposal
-            im_img* prev = im_bundle_get_frame(state->bundle,nframes-1);
-            blit(prev,img,0,0,(int)gif->SWidth,(int)gif->SHeight);
-        }
 
+        if (state->prev) {
+            blit(state->prev,img,0,0,(int)gif->SWidth,(int)gif->SHeight);
+        } else {
+            // first frame - init to background colour
+            drawrect( img,0,0,w,h, (uint8_t)gif->SBackGroundColor);
+        }
 
         if (!state->gcb_valid || state->gcb.TransparentColor == NO_TRANSPARENT_COLOR) {
             if (!decode(gif, img, gif->Image.Left, gif->Image.Top)) {
@@ -242,6 +254,16 @@ static im_img* read_image( struct readstate* state )
         // it's valid (but bonkers) for gif files to have no palette
     }
 
+    // if we're coalescing, we need to track previous 2 frames
+    if( state->coalesce) {
+        state->prevprev = state->prev;
+        memcpy( state->prevprevrect, state->prevrect, sizeof(struct rect) );
+        state->prev = state->image;
+        state->prevrect.x = (int)gif->Image.Left;
+        state->prevrect.y = (int)gif->Image.Top;
+        state->prevrect.w = (int)gif->Image.Width;
+        state->prevrect.h = (int)gif->Image.Height;
+    }
     return img;
 
 bailout:
