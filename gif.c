@@ -40,7 +40,6 @@ struct rect {
 };
 
 struct readstate {
-    bool coalesce;
     GifFileType *gif;
 
     // the currently-active gcb data, if any
@@ -53,19 +52,23 @@ struct readstate {
     //
     im_bundle *bundle;
 
+
     // buffer to hold one line (only used for transparency decode)
     uint8_t *linebuf;
 
-    // original (pre-coalesced) areas for frames N-1 and N-2
-    // need to track this for BACKGROUND and PREVIOUS disposal
-    im_img* prev;
-    struct rect prevrect;
-    int prevdisposal;
+
+
+    bool coalesce;
+    im_img* accumulator;
+    im_img* backup; // backup of accumulator, used for DISPOSE_BACKGROUND frames
+    struct rect disposalrect;
+    int disposal;
 };
 
-static im_img* read_image(struct readstate *state);
-static bool read_extension(struct readstate *state);
-static bool apply_palette(im_img* img, ColorMapObject* cm, int transparent_idx);
+static bool readstate_cleanup( struct readstate* state, ImErr* err);
+static bool process_image(struct readstate *state, ImErr* err);
+static bool process_extension(struct readstate *state);
+static bool apply_palette(GifFileType* gif, im_img* img,  int transparent_idx);
 static bool decode( GifFileType* gif, im_img* destimg, int destx, int desty );
 static bool decode_trns( struct readstate* state, im_img* destimg, int destx, int desty, uint8_t trns );
 static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, int h);
@@ -101,30 +104,42 @@ static bool match_gif_ext(const char* file_ext)
 }
 
 
-static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
+static im_bundle* read_gif_bundle( im_reader* rdr, ImErr* err )
 {
-    struct readstate state;
-    int giferr;
+    struct readstate state = {0};
     bool done=false;
-    SlotID frame = {0};
+    int giferr;
+    im_bundle* out = NULL;
 
     state.coalesce = true; //true;
-    state.linebuf = NULL;
-    state.gcb_valid = false;
     state.gif = DGifOpen( (void*)rdr, input_fn, &giferr);
     state.bundle = im_bundle_new();
-    state.prev = NULL;
-    state.prevdisposal = DISPOSAL_UNSPECIFIED;
-    // we need a buffer big enough to decode a line
+    state.disposal = DISPOSAL_UNSPECIFIED;
     if (!state.gif) {
         *err = translate_err(giferr);
         goto bailout;
     }
+    // we need a buffer big enough to decode a line
     state.linebuf = imalloc((size_t)state.gif->SWidth);
     if (!state.linebuf) {
         *err = ERR_NOMEM;
         goto bailout;
     }
+
+    // if we're coalescing, then use an accumulator image big enough for the entire canvas
+    if (state.coalesce) {
+        int w = (int)state.gif->SWidth;
+        int h = (int)state.gif->SHeight;
+        state.accumulator = im_img_new(w,h,1, FMT_COLOUR_INDEX, DT_U8);
+        if (!state.accumulator) {
+            *err = ERR_NOMEM;
+            goto bailout;
+        }
+        state.disposal = DISPOSAL_UNSPECIFIED;
+        // clear it to the background colour
+        drawrect( state.accumulator,0,0,w,h, (uint8_t)state.gif->SBackGroundColor);
+    }
+
 
     while(!done) {
         GifRecordType rec_type;
@@ -138,20 +153,13 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
                 *err = ERR_MALFORMED;
                 goto bailout;
             case IMAGE_DESC_RECORD_TYPE:
-                {
-                    im_img* img = read_image(&state);
-                    if (!img) {
-                        goto bailout;
-                    }
-                    if( !im_bundle_set(state.bundle, frame, img) ) {
-                        goto bailout;
-                    }
-
-                    ++frame.frame;
+                if( !process_image(&state,err) ) {
+                    goto bailout;
                 }
                 break;
             case EXTENSION_RECORD_TYPE:
-                if( !read_extension(&state) ) {
+                // TODO: set error code!
+                if( !process_extension(&state) ) {
                     goto bailout;
                 }
                 break;
@@ -161,133 +169,162 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
         }
     }
 
-    if(DGifCloseFile(state.gif, &giferr)!=GIF_OK) {
-        state.gif = NULL;
-        *err = translate_err(giferr);
-        goto bailout;
+    // detach the bundle for returning
+    out = state.bundle;
+    state.bundle = NULL;
+    if(!readstate_cleanup(&state, err)) {
+        im_bundle_free(out);
+        return NULL;
     }
-
-    if (state.linebuf) {
-        ifree(state.linebuf);
-        state.linebuf = NULL;
-    }
-
-    return state.bundle;
+    return out;
 
 bailout:
-    if (state.gif) {
-        DGifCloseFile(state.gif, &giferr);
-    }
-    if (state.linebuf) {
-        ifree(state.linebuf);
-        state.linebuf = NULL;
-    }
-    im_bundle_free(state.bundle);
+    readstate_cleanup(&state, NULL);
     return NULL;
 }
 
 
-// TODO: break up coalesced and raw paths into separate fns
-static im_img* read_image( struct readstate* state )
+static bool readstate_cleanup( struct readstate* state, ImErr* err)
 {
+
+    if (state->linebuf) {
+        ifree(state->linebuf);
+    }
+    if (state->bundle) {
+        im_bundle_free(state->bundle);
+    }
+    if (state->gif) {
+        int giferr;
+        if(DGifCloseFile(state->gif, &giferr)!=GIF_OK) {
+            *err = translate_err(giferr);
+            return false;
+        }
+    }
+    return true;
+}
+
+
+
+
+
+static bool process_image( struct readstate* state, ImErr* err )
+{
+    im_img* img = NULL;
     GifFileType* gif = state->gif;
-    im_img *img=NULL;
+    int trns = NO_TRANSPARENT_COLOR;
+    if (state->gcb_valid) {
+        trns = state->gcb.TransparentColor;
+    }
 
     if (DGifGetImageDesc(gif) != GIF_OK) {
-        // TODO: set error?
-        goto bailout;
+        *err = translate_err(gif->Error);
+        return false;
     }
 
     if (state->coalesce) {
         int w = (int)gif->SWidth;
         int h = (int)gif->SHeight;
-        int nframes;
-        // all images occupy full virtual canvas
-        img = im_img_new(w,h,1,FMT_COLOUR_INDEX, DT_U8);
-        if (!img) {
-            goto bailout;
+        int disposal = DISPOSAL_UNSPECIFIED;
+        if (state->gcb_valid) {
+            disposal = state->gcb.DisposalMode;
         }
 
-        if (state->prev) {
-            // take previous frame, apply disposal
-            switch (state->prevdisposal) {
+
+        // apply frame disposal...
+        if (im_bundle_num_frames(state->bundle) > 0) {
+            switch (state->disposal) {
                 case DISPOSAL_UNSPECIFIED:
                 case DISPOSE_DO_NOT:
-                    blit(state->prev,img,0,0,(int)gif->SWidth,(int)gif->SHeight);
-                    break;
-                case DISPOSE_PREVIOUS:
-                    // TODO:
-                    // need to stash area before blitting
                     break;
                 case DISPOSE_BACKGROUND:
-                    // previous frame with damaged area restored to BG colour
                     {
-                        blit(state->prev,img,0,0,(int)gif->SWidth,(int)gif->SHeight);
-                        struct rect *r = &state->prevrect;
-                        drawrect( img,r->x, r->y, r->w, r->h, (uint8_t)gif->SBackGroundColor);
+                        struct rect *r = &state->disposalrect;
+                        drawrect( state->accumulator,r->x, r->y, r->w, r->h, (uint8_t)gif->SBackGroundColor);
                     }
                     break;
+                case DISPOSE_PREVIOUS:
+                    // restore from backup
+                    blit(state->backup, state->accumulator,0,0,(int)gif->SWidth,(int)gif->SHeight);
+                    break;
             }
-        } else {
-            // first frame - init to background colour
-            drawrect( img,0,0,w,h, (uint8_t)gif->SBackGroundColor);
         }
 
-        if (!state->gcb_valid || state->gcb.TransparentColor == NO_TRANSPARENT_COLOR) {
-            if (!decode(gif, img, gif->Image.Left, gif->Image.Top)) {
-                goto bailout;
+        // back up the current accumulator if we'll need to roll back
+        if (disposal == DISPOSE_PREVIOUS) {
+            if (state->backup) {
+                im_img_free(state->backup);
             }
-        } else {
-            if (!decode_trns(state, img, gif->Image.Left, gif->Image.Top, (uint8_t)state->gcb.TransparentColor)) {
-                goto bailout;
+            state->backup = im_img_clone(state->accumulator);
+            if (!state->backup) {
+                *err = ERR_NOMEM;
+                return false;
             }
         }
+
+        // decode the new frame into the accumulator
+        if (trns == NO_TRANSPARENT_COLOR) {
+            if (!decode(gif, state->accumulator, gif->Image.Left, gif->Image.Top)) {
+                *err= translate_err(gif->Error);
+                return false;
+            }
+        } else {
+            if (!decode_trns(state, state->accumulator, gif->Image.Left, gif->Image.Top, (uint8_t)trns)) {
+                *err= translate_err(gif->Error);
+                return false;
+            }
+        }
+
+        // update the palette
+        if (!apply_palette(gif,state->accumulator, trns)) {
+            *err= ERR_NOMEM;
+            return false;
+        }
+
+        // remember what we need to do next time
+        state->disposal = disposal;
+        state->disposalrect.x = (int)gif->Image.Left;
+        state->disposalrect.y = (int)gif->Image.Top;
+        state->disposalrect.w = (int)gif->Image.Width;
+        state->disposalrect.h = (int)gif->Image.Height;
+
+        // take a copy of the accumulator for adding to bundle
+        img = im_img_clone(state->accumulator);
+        if (!img) {
+            *err = ERR_NOMEM;
+            return false;
+        }
+
     } else {
         // load each frame as separate image
         img = im_img_new((int)gif->Image.Width, (int)gif->Image.Height,1,FMT_COLOUR_INDEX, DT_U8);
         if (!img) {
-            goto bailout;
+            *err = ERR_NOMEM;
+            return false;
         }
         if (!decode(gif,img,0,0)) {
-            goto bailout;
+            *err = translate_err(gif->Error);
+            im_img_free(img);
+            return false;
         }
+
+        if (!apply_palette(gif,img,trns)) {
+            *err = ERR_NOMEM;
+            im_img_free(img);
+            return false;
+        }
+
         im_img_set_offset(img, (int)gif->Image.Left, (int)gif->Image.Top);
         // TODO: record disposal details here
     }
-    //printf("image (%dx%d)\n", gif->Image.Width, gif->Image.Height);
 
-
-    // TODO: pass in transparent colour to apply_palette!
-    if (gif->Image.ColorMap) {
-        if (!apply_palette(img, gif->Image.ColorMap,-1)) {
-            goto bailout;
-        }
-    } else if (gif->SColorMap) {
-        if (!apply_palette(img, gif->SColorMap,-1)) {
-            goto bailout;
-        }
-    } else {
-        // it's valid (but bonkers) for gif files to have no palette
+    // add image to the bundle
+    {
+        SlotID id = {0};
+        id.frame = im_bundle_num_frames(state->bundle);
+        im_bundle_set( state->bundle, id, img);
     }
-
-    // if we're coalescing, we need to track previous 2 frames
-    if( state->coalesce) {
-        state->prev = img;
-        state->prevrect.x = (int)gif->Image.Left;
-        state->prevrect.y = (int)gif->Image.Top;
-        state->prevrect.w = (int)gif->Image.Width;
-        state->prevrect.h = (int)gif->Image.Height;
-        if (state->gcb_valid) {
-            state->prevdisposal = state->gcb.DisposalMode;
-        }
-    }
-    return img;
-
-bailout:
-    if (img) {
-        im_img_free(img);
-    }
-    return NULL;
+    
+    return true;
 }
 
 
@@ -378,7 +415,7 @@ static bool decode_trns( struct readstate* state, im_img* destimg, int destx, in
 }
 
 
-static bool read_extension( struct readstate* state )
+static bool process_extension( struct readstate* state )
 {
     GifFileType* gif = state->gif;
     GifByteType* buf;
@@ -421,12 +458,20 @@ static bool read_extension( struct readstate* state )
     return true;
 }
 
-static bool apply_palette(im_img* img, ColorMapObject* cm, int transparent_idx)
+static bool apply_palette(GifFileType* gif, im_img* img,  int transparent_idx)
 {
     uint8_t buf[256*4];
     uint8_t* dest;
     int i;
     ImPalFmt palfmt;
+    ColorMapObject* cm = gif->Image.ColorMap;
+    if (!cm) {
+        cm = gif->SColorMap;    // fall back to global palette
+    }
+    if( !cm ) {
+        // it's valid (but bonkers) for there to be no palette at all
+        return true;
+    }
 
     // GifColorType doesn't seem to be byte-packed, so pack it ourselves
     // (and add alpha while we're at it)
@@ -439,7 +484,7 @@ static bool apply_palette(im_img* img, ColorMapObject* cm, int transparent_idx)
         *dest++ = (transparent_idx == i) ? 0 : 255;
     }
 
-    palfmt = (transparent_idx==-1) ? PALFMT_RGB:PALFMT_RGBA;
+    palfmt = (transparent_idx==NO_TRANSPARENT_COLOR) ? PALFMT_RGB:PALFMT_RGBA;
     if( !im_img_pal_set( img, palfmt, cm->ColorCount, NULL )) {
         return false;
     }

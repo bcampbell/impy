@@ -131,3 +131,41 @@ static void copy_pal_range( ImPalFmt src_fmt, const uint8_t* src, ImPalFmt dest_
         }
     }
 }
+
+
+
+im_img* im_img_clone(const im_img* src_img)
+{
+    int w = im_img_w(src_img);
+    int h = im_img_h(src_img);
+    int d = im_img_d(src_img);
+    ImFmt fmt = im_img_format(src_img);
+    ImDatatype dt = im_img_datatype(src_img);
+
+    size_t bytesperline = w * im_bytesperpixel(fmt,dt);
+    int y,z;
+    im_img* dest_img = im_img_new(w,h,d,fmt,dt);
+    if (!dest_img) {
+        return NULL;
+    }
+    // copy the data:
+    for (z=0; z<d; ++z) {
+        for (y=0; y<h; ++y) {
+            const uint8_t* src = im_img_row(src_img, (z*h) + y);
+            uint8_t* dest = im_img_row(dest_img, (z*h) + y);
+            memcpy(dest, src, bytesperline);
+        }
+    }
+
+    // copy palette, if there is one
+    int ncolours = im_img_pal_num_colours(src_img);
+    if (ncolours>0) {
+        const void* raw = im_img_pal_data(src_img);
+        if( !im_img_pal_set( dest_img, im_img_pal_fmt(src_img), ncolours, raw) ) {
+            im_img_free(dest_img);
+            return NULL;
+        }
+    }
+    return dest_img;
+}
+

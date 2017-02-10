@@ -234,6 +234,8 @@ static inline im_img* im_img_new( int w, int h, int d, ImFmt fmt, ImDatatype dat
 static inline void im_img_free(im_img *img)
     { im_current_img_impl->free(img); }
 
+// create a new copy of an existing image
+extern im_img* im_img_clone(const im_img* src_img);
 
 extern im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
@@ -287,7 +289,7 @@ static inline int im_img_pal_num_colours(const im_img* img)
 static inline ImPalFmt im_img_pal_fmt(const im_img* img)
     { return im_current_img_impl->pal_fmt( img ); }
 
-// get access to raw palette coloure
+// get access to raw palette colours (result undefined if ncolours==0)
 static inline void* im_img_pal_data(const im_img* img)
     { return im_current_img_impl->pal_data( img ); }
 
