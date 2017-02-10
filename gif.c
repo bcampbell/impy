@@ -60,8 +60,7 @@ struct readstate {
     // need to track this for BACKGROUND and PREVIOUS disposal
     im_img* prev;
     struct rect prevrect;
-    im_img* prevprev;
-    struct rect prevprevrect;
+    int prevdisposal;
 };
 
 static im_img* read_image(struct readstate *state);
@@ -115,7 +114,7 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr *err )
     state.gif = DGifOpen( (void*)rdr, input_fn, &giferr);
     state.bundle = im_bundle_new();
     state.prev = NULL;
-    state.prevprev = NULL;
+    state.prevdisposal = DISPOSAL_UNSPECIFIED;
     // we need a buffer big enough to decode a line
     if (!state.gif) {
         *err = translate_err(giferr);
@@ -188,8 +187,7 @@ bailout:
 }
 
 
-
-
+// TODO: break up coalesced and raw paths into separate fns
 static im_img* read_image( struct readstate* state )
 {
     GifFileType* gif = state->gif;
@@ -211,7 +209,25 @@ static im_img* read_image( struct readstate* state )
         }
 
         if (state->prev) {
-            blit(state->prev,img,0,0,(int)gif->SWidth,(int)gif->SHeight);
+            // take previous frame, apply disposal
+            switch (state->prevdisposal) {
+                case DISPOSAL_UNSPECIFIED:
+                case DISPOSE_DO_NOT:
+                    blit(state->prev,img,0,0,(int)gif->SWidth,(int)gif->SHeight);
+                    break;
+                case DISPOSE_PREVIOUS:
+                    // TODO:
+                    // need to stash area before blitting
+                    break;
+                case DISPOSE_BACKGROUND:
+                    // previous frame with damaged area restored to BG colour
+                    {
+                        blit(state->prev,img,0,0,(int)gif->SWidth,(int)gif->SHeight);
+                        struct rect *r = &state->prevrect;
+                        drawrect( img,r->x, r->y, r->w, r->h, (uint8_t)gif->SBackGroundColor);
+                    }
+                    break;
+            }
         } else {
             // first frame - init to background colour
             drawrect( img,0,0,w,h, (uint8_t)gif->SBackGroundColor);
@@ -256,13 +272,14 @@ static im_img* read_image( struct readstate* state )
 
     // if we're coalescing, we need to track previous 2 frames
     if( state->coalesce) {
-        state->prevprev = state->prev;
-        memcpy( state->prevprevrect, state->prevrect, sizeof(struct rect) );
-        state->prev = state->image;
+        state->prev = img;
         state->prevrect.x = (int)gif->Image.Left;
         state->prevrect.y = (int)gif->Image.Top;
         state->prevrect.w = (int)gif->Image.Width;
         state->prevrect.h = (int)gif->Image.Height;
+        if (state->gcb_valid) {
+            state->prevdisposal = state->gcb.DisposalMode;
+        }
     }
     return img;
 
