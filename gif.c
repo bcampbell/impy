@@ -111,7 +111,7 @@ static im_bundle* read_gif_bundle( im_reader* rdr, ImErr* err )
     int giferr;
     im_bundle* out = NULL;
 
-    state.coalesce = true; //true;
+    state.coalesce = true;
     state.gif = DGifOpen( (void*)rdr, input_fn, &giferr);
     state.bundle = im_bundle_new();
     state.disposal = DISPOSAL_UNSPECIFIED;
@@ -186,6 +186,12 @@ bailout:
 
 static bool readstate_cleanup( struct readstate* state, ImErr* err)
 {
+    if (state->backup) {
+        im_img_free(state->backup);
+    }
+    if (state->accumulator) {
+        im_img_free(state->accumulator);
+    }
 
     if (state->linebuf) {
         ifree(state->linebuf);

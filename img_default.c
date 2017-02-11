@@ -80,6 +80,9 @@ im_img* image_create(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
 void image_free(im_img *img)
 {
     struct image* foo = (struct image*)img;
+    if (foo->pixel_data) {
+        ifree(foo->pixel_data);
+    }
     if (foo->pal_data) {
         ifree(foo->pal_data);
     }
