@@ -42,6 +42,7 @@ extern void ifree(void* ptr);
 extern struct handler handle_png;
 extern struct handler handle_gif;
 extern struct handler handle_iff;
+extern struct handler handle_bmp;
 #endif
 
 

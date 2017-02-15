@@ -37,9 +37,9 @@ typedef enum ImErr {
     ERR_BADPARAM,
     ERR_COULDNTOPEN,
     ERR_MALFORMED,      // data looks borked
-    ERR_UNSUPPORTED,     // file has stuff we don't (yet) support
+    ERR_UNSUPPORTED,    // file has stuff we don't (yet) support
     ERR_NOCONV,         // unsupported pixel conversion (eg rgb->indexed)
-    ERR_FILE,           // general file error
+    ERR_FILE,           // general IO/file error
     ERR_UNKNOWN_FILE_TYPE,
     ERR_EXTLIB,         // any unspecified error in external lib
 } ImErr;
