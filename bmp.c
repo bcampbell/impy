@@ -13,6 +13,9 @@ static im_img* read_bmp_image( im_reader* rdr, ImErr* err );
 
 struct handler handle_bmp = {is_bmp, read_bmp_image, NULL, match_bmp_ext, NULL, NULL};
 
+// bmp sample files:
+//
+// http://fileformats.archiveteam.org/wiki/BMP#Sample_files
 
 
 #define BMP_FILE_HEADER_SIZE 14
@@ -56,12 +59,12 @@ typedef struct bmp_state {
     int ncolours;
     uint32_t mask[4];   // r,g,b,a
 
-    //
+    // buffer to stash src palette data
     uint8_t rawcolours[256*4];
 
-
+    // a buffer to load/decode a single line of the image
     size_t srclinesize;    // including padding
-    uint8_t* linebuf;   // buffer to load one line of source data
+    uint8_t* linebuf;
 } bmp_state;
 
 static bool is_bmp(const uint8_t* buf, int nbytes)
@@ -104,6 +107,7 @@ static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* im
 static bool read_img_24_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_32_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_4_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 
 static im_img* read_bmp_image( im_reader* rdr, ImErr* err )
 {
@@ -379,7 +383,11 @@ static im_img* read_image(bmp_state* bmp, im_reader* rdr, ImErr* err)
     }
 
 
-    if (bmp->compression==BI_RGB && bmp->bitcount==8) {
+    if (bmp->compression==BI_RGB && bmp->bitcount==4) {
+        if (!read_img_4_BI_RGB(bmp,rdr,img,err)) {
+            goto bailout;
+        }
+    } else if (bmp->compression==BI_RGB && bmp->bitcount==8) {
         if (!read_img_indexed(bmp,rdr,img,err)) {
             goto bailout;
         }
@@ -615,6 +623,39 @@ static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* im
                     v = (255*v) / div[i];   // scale to 0..255
                     *dest++ = (uint8_t)v;
                 }
+            }
+        }
+    }
+    return true;
+}
+
+static bool read_img_4_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+{
+    uint8_t* src;
+    uint8_t* dest;
+    int x,y;
+    uint8_t mask = 0x0f;
+    int shift=4;
+    int div=mask;
+    int pixelsperbyte = 8/shift;
+    int i;
+
+    assert(bmp->linebuf);
+    for (y=0; y<bmp->h; ++y) {
+        if (im_read(rdr,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
+            *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+            return false;
+        }
+        dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
+        src = bmp->linebuf;
+        x=0;
+        while( x<bmp->w ) {
+            uint8_t packed = *src++;
+            int i;
+            for (i=0; i<pixelsperbyte && x<bmp->w; ++i) {
+                *dest++ = packed & mask;
+                packed = packed>>shift;
+                ++x;
             }
         }
     }
