@@ -79,7 +79,7 @@ static inline uint32_t decode_u32le(uint8_t** cursor)
     return (p[3]<<24) | (p[2]<<16) | (p[1]<<8) | p[0];
 }
 
-static inline uint16_t decode_u16le(uint8_t** cursor) {
+static inline uint16_t decode_u16le(const uint8_t** cursor) {
     const uint8_t* p = *cursor;
     *cursor += 2;
     return (p[1]<<8) | p[0];
@@ -97,7 +97,10 @@ static bool read_colour_table(bmp_state* bmp, im_reader* rdr, ImErr* err);
 static im_img* read_image(bmp_state* bmp, im_reader* rdr, ImErr* err);
 static bool cook_colour_table(bmp_state* bmp, im_img* img, ImErr* err);
 static bool read_img_indexed( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
-static bool read_img_rgb16( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_24_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_32_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 
 static im_img* read_bmp_image( im_reader* rdr, ImErr* err )
 {
@@ -113,6 +116,7 @@ static im_img* read_bmp_image( im_reader* rdr, ImErr* err )
         return NULL;
     }
 
+    // TODO: V3 has bit masks in colour table for bitcount>=16
     if (!read_colour_table(&bmp, rdr, err)) {
         return NULL;
     }
@@ -273,29 +277,6 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
     // TODO:
     // check bitcount in [1,2,4,8,16,24,32]
 
-
-    // preset RGB bit masks for BI_RGB
-    if( compression == BI_RGB ) {
-        switch (bitcount) {
-            case 16:    //555.1
-                rmask=0xf800;
-                gmask=0x07c0;
-                bmask=0x003e;
-                break;
-            case 24:
-                rmask=0x000000FF;
-                gmask=0x0000FF00;
-                bmask=0x00FF0000;
-                break;
-            case 32:
-                rmask=0x000000FF;
-                gmask=0x0000FF00;
-                bmask=0x00FF0000;
-                break;
-        }
-    }
-
-
     bmp->headersize = headersize;
 
     bmp->w = w;
@@ -378,6 +359,27 @@ static im_img* read_image(bmp_state* bmp, im_reader* rdr, ImErr* err)
 
     if (bmp->compression==BI_RGB && bmp->bitcount==8) {
         if (!read_img_indexed(bmp,rdr,img,err)) {
+            goto bailout;
+        }
+    } else if (bmp->bitcount==16) {
+        if (!read_img_16_BI_BITFIELDS(bmp,rdr,img,err)) {
+            goto bailout;
+        }
+    } else if (bmp->bitcount==24) {
+        if (!read_img_24_BI_RGB(bmp,rdr,img,err)) {
+            goto bailout;
+        }
+    } else if (bmp->bitcount==32) {
+        if (bmp->compression==BI_RGB) {
+            if (!read_img_32_BI_RGB(bmp,rdr,img,err)) {
+                goto bailout;
+            }
+        } else if (bmp->compression==BI_BITFIELDS) {
+            if (!read_img_32_BI_BITFIELDS(bmp,rdr,img,err)) {
+                goto bailout;
+            }
+        } else {
+            *err = ERR_UNSUPPORTED;
             goto bailout;
         }
     } else {
@@ -474,11 +476,13 @@ static int calc_shift(uint32_t mask)
 }
 
 
-static bool read_img_rgb16( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+
+// handle 16bit, BI_BITFIELDS
+static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
 {
     size_t srcpitch = (((bmp->w*2) + 3)/4)*4;
-    uint16_t* buf = NULL;
-    const uint16_t* src;
+    uint8_t* buf = NULL;
+    const uint8_t* src;
     uint8_t* dest;
     int x,y;
     int i;
@@ -504,7 +508,7 @@ static bool read_img_rgb16( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* 
             *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
             goto cleanup;
         }
-        dest = im_img_row(img, bmp->topdown ? y : bmp->h-y);
+        dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
         src=buf;
 
         if (bmp->mask[3]) {
@@ -538,3 +542,118 @@ cleanup:
     return (*err == ERR_NONE);
 }
 
+
+
+
+// BI_RGB only - no fancy bitfield shenanigans needed
+static bool read_img_24_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+{
+    size_t srcpitch = (((bmp->w*3) + 3)/4)*4;
+    uint8_t* buf = NULL;
+    const uint8_t* src;
+    uint8_t* dest;
+    int x,y;
+    int i;
+
+    *err = ERR_NONE;
+    buf = imalloc(srcpitch);
+    if (!buf) {
+        *err = ERR_NOMEM;
+        goto cleanup;
+    }
+
+    for (y=0; y<bmp->h; ++y) {
+        if (im_read(rdr,buf,srcpitch) != srcpitch) {
+            *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+            goto cleanup;
+        }
+        dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
+        src=buf;
+
+        // bgrbgrbgr...
+        for( x=0; x<bmp->w; ++x) {
+            *dest++ = src[2];
+            *dest++ = src[1];
+            *dest++ = src[0];
+            src += 3;
+        }
+    }
+
+cleanup:
+    if (buf) {
+        ifree(buf);
+    }
+
+    return (*err == ERR_NONE);
+}
+
+static bool read_img_32_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+{
+    // TODO
+    *err = ERR_UNSUPPORTED;
+    return false;
+}
+
+static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+{
+    size_t srcpitch = (((bmp->w*4) + 3)/4)*4;
+    uint8_t* buf = NULL;
+    const uint8_t* src;
+    uint8_t* dest;
+    int x,y;
+    int i;
+    uint32_t shift[4];
+    uint32_t div[4];
+
+    *err = ERR_NONE;
+    buf = imalloc(srcpitch);
+    if (!buf) {
+        *err = ERR_NOMEM;
+        goto cleanup;
+    }
+
+    // calc shift and divisor
+    for (i=0; i<4; ++i) {
+        shift[i] = calc_shift(bmp->mask[i]);
+        div[i] = bmp->mask[i] >> shift[i];
+    }
+
+    //
+    for (y=0; y<bmp->h; ++y) {
+        if (im_read(rdr,buf,srcpitch) != srcpitch) {
+            *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+            goto cleanup;
+        }
+        dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
+        src=buf;
+
+        if (bmp->mask[3]) {
+            // RGBA
+            for( x=0; x<bmp->w; ++x) {
+                uint32_t packed = decode_u32le(&src);
+                for( i=0; i<4; ++i) {
+                    uint32_t v = (packed & bmp->mask[i]) >> shift[i];
+                    v = (255*v) / div[i];   // scale to 0..255
+                    *dest++ = (uint8_t)v;
+                }
+            }
+        } else {
+            // RGB - no alpha
+            for( x=0; x<bmp->w; ++x) {
+                uint32_t packed = decode_u32le(&src);
+                for( i=0; i<3; ++i) {
+                    uint32_t v = (packed & bmp->mask[i]) >> shift[i];
+                    v = (255*v) / div[i];   // scale to 0..255
+                    *dest++ = (uint8_t)v;
+                }
+            }
+        }
+    }
+
+cleanup:
+    if (buf) {
+        ifree(buf);
+    }
+
+    return (*err == ERR_NONE);
+}
