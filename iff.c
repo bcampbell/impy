@@ -171,8 +171,10 @@ static void ctx_free(context* ctx)
 static inline uint32_t padlen( uint32_t n) {
     return (n&1) ? n+1 : n;
 }
-static inline bool chkcc( const uint8_t* a, const uint8_t* b) {
-    return (a[0]==b[0]) && (a[1]==b[1]) && (a[2]==b[2]) && (a[3]==b[3]);
+static inline bool chkcc( const void* a, const void* b) {
+    const char* aa = a;
+    const char* bb = b;
+    return (aa[0]==bb[0]) && (aa[1]==bb[1]) && (aa[2]==bb[2]) && (aa[3]==bb[3]);
 }
 
 static bool is_iff(const uint8_t* buf, int nbytes);

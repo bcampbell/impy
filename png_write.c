@@ -41,7 +41,7 @@ bool write_png_image(im_img* img, im_writer* out, ImErr* err)
     }
 
     png_set_write_fn(png_ptr,
-        (voidp)out, custom_write, custom_flush);
+        (png_voidp)out, custom_write, custom_flush);
 
       //voidp write_io_ptr = png_get_io_ptr(write_ptr);
 

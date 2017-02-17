@@ -90,16 +90,17 @@ extern im_img_impl *im_current_img_impl;
 /* IO abstraction - basically follows stdio.h style */
 #define IM_SEEK_SET 0
 #define IM_SEEK_CUR 1
-typedef struct im_reader im_reader;
+//typedef struct im_reader im_reader;
 
+struct im_reader;
 
 // abstracted interface for reading
 typedef struct im_reader {
-    size_t (*read)(im_reader*, void* , size_t );
-    int (*seek)(im_reader*, long , int);
-    int (*eof)(im_reader*);
-    int (*error)(im_reader*);
-    int (*close)(im_reader*);
+    size_t (*read)(struct im_reader*, void* , size_t );
+    int (*seek)(struct im_reader*, long , int);
+    int (*eof)(struct im_reader*);
+    int (*error)(struct im_reader*);
+    int (*close)(struct im_reader*);
 } im_reader;
 
 
@@ -198,12 +199,10 @@ static inline uint32_t im_read_u32le(im_reader* rdr)
 }
 
 
-typedef struct im_writer im_writer;
-
 // abstracted interface for writing
 typedef struct im_writer {
-    size_t (*write)(im_writer*, const void* , size_t);
-    int (*close)(im_writer*);
+    size_t (*write)(struct im_writer*, const void* , size_t);
+    int (*close)(struct im_writer*);
 } im_writer;
 
 
