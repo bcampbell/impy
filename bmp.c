@@ -230,8 +230,11 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
         h = (int)decode_s16le(&p);
         planes = (int)decode_s16le(&p);
         bitcount = (int)decode_u16le(&p);
-
-        ncolours = 1 << bitcount;
+        if (bitcount<=8) {
+            ncolours = 1 << bitcount;
+        } else {
+            ncolours = 0;   // no palette
+        }
     } else {
         // it's BITMAPINFOHEADER or higher
         w = (int)decode_s32le(&p);
