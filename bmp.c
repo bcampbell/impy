@@ -13,10 +13,16 @@ static im_img* read_bmp_image( im_reader* rdr, ImErr* err );
 
 struct handler handle_bmp = {is_bmp, read_bmp_image, NULL, match_bmp_ext, NULL, NULL};
 
-// bmp sample files:
+//
+// bmp format reference:
+// https://en.wikipedia.org/wiki/BMP_file_format
+// https://msdn.microsoft.com/en-us/library/dd183391(v=vs.85).aspx
+// http://www.fileformat.info/format/bmp/egff.htm
+//
+// sample files:
 //
 // http://fileformats.archiveteam.org/wiki/BMP#Sample_files
-
+//
 
 #define BMP_FILE_HEADER_SIZE 14
 
