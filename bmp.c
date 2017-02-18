@@ -62,6 +62,7 @@ typedef struct bmp_state {
     bool topdown;
     int bitcount;
     int compression;
+    size_t imagesize;   // size of image data (for compressed fmts only)
     int ncolours;
     uint32_t mask[4];   // r,g,b,a
 
@@ -114,10 +115,11 @@ static bool read_img_32_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImE
 static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_packed_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_8_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_BI_RLE8( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 
 static im_img* read_bmp_image( im_reader* rdr, ImErr* err )
 {
-    bmp_state bmp;
+    bmp_state bmp = {0};
     uint8_t* p;
     im_img* img = NULL;
 
@@ -221,6 +223,7 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
     uint8_t* p;
     uint32_t rmask=0,gmask=0,bmask=0,amask=0;
     size_t linesize;
+    size_t imagesize;
 
     // read the dib header (variable size)
     if(im_read(rdr, buf, 4) != 4 ) {
@@ -262,7 +265,7 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
         bitcount = (int)decode_u16le(&p);
 
         compression = decode_u32le(&p);   // compression method
-        decode_u32le(&p);   // image size
+        imagesize = (size_t)decode_u32le(&p);   // image size
         decode_u32le(&p);   // x pixelspermeter
         decode_u32le(&p);   // y pixelspermeter
         ncolours = decode_u32le(&p);   // num colours in palette
@@ -311,6 +314,7 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
     }
     bmp->bitcount = bitcount;
     bmp->compression = compression;
+    bmp->imagesize = imagesize;
     bmp->ncolours = ncolours;
 
     bmp->mask[0] = rmask;
@@ -319,17 +323,22 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
     bmp->mask[3] = amask;
 
 
-    // alloc buf for reading (enough for a whole line)
-    bmp->srclinesize = ((bmp->w*bitcount)+7)/8;
-    bmp->srclinesize = ((bmp->srclinesize+3) / 4)*4;    // pad to 32bit
-    bmp->linebuf = imalloc(bmp->srclinesize);
-    if (!bmp->linebuf) {
-        *err = ERR_NOMEM;
-        return false;
+    if (compression == BI_RGB || compression == BI_BITFIELDS) {
+        // alloc buf for reading (enough for a whole line)
+        bmp->srclinesize = ((bmp->w*bitcount)+7)/8;
+        bmp->srclinesize = ((bmp->srclinesize+3) / 4)*4;    // pad to 32bit
+        bmp->linebuf = imalloc(bmp->srclinesize);
+        if (!bmp->linebuf) {
+            *err = ERR_NOMEM;
+            return false;
+        }
+    } else {
+        bmp->linebuf = NULL;
+        bmp->srclinesize = 0;
     }
 
-        printf("%dx%d, %d planes, %d bitcount, %d compression, %d ncolours, %d linesize\n", w,h,planes,bitcount, compression, ncolours, bmp->srclinesize);
-            printf(" mask: 0x%08x 0x%08x 0x%08x 0x%08x\n", rmask, gmask, bmask, amask);
+    printf("%dx%d, %d planes, %d bitcount, %d compression, %d ncolours, %d linesize\n", w,h,planes,bitcount, compression, ncolours, bmp->srclinesize);
+    printf(" mask: 0x%08x 0x%08x 0x%08x 0x%08x\n", rmask, gmask, bmask, amask);
     return true;
 }
 
@@ -389,12 +398,16 @@ static im_img* read_image(bmp_state* bmp, im_reader* rdr, ImErr* err)
     }
 
 
-    if (bmp->compression==BI_RGB && bmp->bitcount<8) {
+    if (bmp->bitcount<8 && bmp->compression==BI_RGB) {
         if (!read_img_packed_BI_RGB(bmp,rdr,img,err)) {
             goto bailout;
         }
-    } else if (bmp->compression==BI_RGB && bmp->bitcount==8) {
+    } else if (bmp->bitcount==8 && bmp->compression==BI_RGB) {
         if (!read_img_8_BI_RGB(bmp,rdr,img,err)) {
+            goto bailout;
+        }
+    } else if (bmp->bitcount==8 && bmp->compression==BI_RLE8 ) {
+        if (!read_img_BI_RLE8(bmp,rdr,img,err)) {
             goto bailout;
         }
     } else if (bmp->bitcount==16) {
@@ -676,3 +689,55 @@ static bool read_img_packed_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img,
     }
     return true;
 }
+
+static bool read_img_BI_RLE8( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+{
+    uint8_t* buf;
+    uint8_t* src;
+    uint8_t* srcend;
+    int x,y;
+    assert(bmp->imagesize);
+    *err = ERR_NONE;
+
+    buf = imalloc(bmp->imagesize);
+    if (!buf) {
+        *err = ERR_NOMEM;
+        return false;
+    }
+
+    if (im_read(rdr,buf,bmp->imagesize) != bmp->imagesize) {
+        ifree(buf);
+        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+        return false;
+    }
+/*
+    src = buf;
+    srcend = src + bmp->imagesize;
+    x=0;
+    y=0;
+    while(1) {
+        uint8_t n = *src++;
+        if (n>0) {
+            uint8_t v = *src++;
+            for( ; n>0;--n) {
+                *dest++ = v;
+            }
+        } else {
+            uint8_t v = *src++;
+            if( 
+        }
+
+
+
+    }
+*/
+
+
+    printf("%d bytes\n", bmp->imagesize);
+cleanup:
+    ifree(buf);
+
+    return *err == ERR_NONE;
+}
+
+
