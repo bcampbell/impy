@@ -102,12 +102,12 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err);
 static bool read_colour_table(bmp_state* bmp, im_reader* rdr, ImErr* err);
 static im_img* read_image(bmp_state* bmp, im_reader* rdr, ImErr* err);
 static bool cook_colour_table(bmp_state* bmp, im_img* img, ImErr* err);
-static bool read_img_indexed( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_24_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_32_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
-static bool read_img_4_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_packed_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_8_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 
 static im_img* read_bmp_image( im_reader* rdr, ImErr* err )
 {
@@ -314,7 +314,7 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
 
 
     // alloc buf for reading (enough for a whole line)
-    bmp->srclinesize = (bmp->w*bitcount)/8;
+    bmp->srclinesize = ((bmp->w*bitcount)+7)/8;
     bmp->srclinesize = ((bmp->srclinesize+3) / 4)*4;    // pad to 32bit
     bmp->linebuf = imalloc(bmp->srclinesize);
     if (!bmp->linebuf) {
@@ -383,12 +383,12 @@ static im_img* read_image(bmp_state* bmp, im_reader* rdr, ImErr* err)
     }
 
 
-    if (bmp->compression==BI_RGB && bmp->bitcount==4) {
-        if (!read_img_4_BI_RGB(bmp,rdr,img,err)) {
+    if (bmp->compression==BI_RGB && bmp->bitcount<8) {
+        if (!read_img_packed_BI_RGB(bmp,rdr,img,err)) {
             goto bailout;
         }
     } else if (bmp->compression==BI_RGB && bmp->bitcount==8) {
-        if (!read_img_indexed(bmp,rdr,img,err)) {
+        if (!read_img_8_BI_RGB(bmp,rdr,img,err)) {
             goto bailout;
         }
     } else if (bmp->bitcount==16) {
@@ -456,7 +456,9 @@ static bool cook_colour_table(bmp_state* bmp, im_img* img, ImErr* err)
 }
 
 
-static bool read_img_indexed( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+// could be handled by read_img_packed_BI_RGB(), but a  special case seems reasonable
+// (this'll be quicker because it doesn't have to faff about with bitmasking)
+static bool read_img_8_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
 {
     uint8_t* src;
     uint8_t* dest;
@@ -478,7 +480,7 @@ static bool read_img_indexed( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr
 }
 
 
-
+// figure out how far right a mask needs to be shifted
 static int calc_shift(uint32_t mask)
 {
     int i;
@@ -629,17 +631,25 @@ static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* im
     return true;
 }
 
-static bool read_img_4_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+// handle BI_RGB 1,2,4 bit-packed images
+static bool read_img_packed_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
 {
     uint8_t* src;
     uint8_t* dest;
     int x,y;
-    uint8_t mask = 0x0f;
-    int shift=4;
-    int div=mask;
-    int pixelsperbyte = 8/shift;
+    uint8_t mask;
+    int shift;
+    int pixelsperbyte = 8/bmp->bitcount;
     int i;
 
+    switch( bmp->bitcount) {
+        case 1: mask = 0x01; shift = 1; break;
+        case 2: mask = 0x03; shift=2; break;
+        case 4: mask=0x0f; shift=4; break;
+        default:
+            *err = ERR_MALFORMED;
+            return false;
+    }
     assert(bmp->linebuf);
     for (y=0; y<bmp->h; ++y) {
         if (im_read(rdr,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
@@ -652,9 +662,8 @@ static bool read_img_4_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImEr
         while( x<bmp->w ) {
             uint8_t packed = *src++;
             int i;
-            for (i=0; i<pixelsperbyte && x<bmp->w; ++i) {
-                *dest++ = packed & mask;
-                packed = packed>>shift;
+            for (i=pixelsperbyte-1; i>=0 && x<bmp->w; --i) {
+                *dest++ = packed>>(i*shift) & mask;
                 ++x;
             }
         }
