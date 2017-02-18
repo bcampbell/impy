@@ -314,7 +314,8 @@ static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype d
                 case FMT_LUMINANCE: break;  //TODO
             }
             break;
-
+        default:
+            return NULL;
     }
     if (fn==NULL) {
         return NULL;

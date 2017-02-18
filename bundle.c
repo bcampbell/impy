@@ -8,7 +8,7 @@ typedef struct slot {
     im_img* img;
 } slot;
 
-typedef struct im_bundle{
+struct im_bundle{
     int nframes;
     int nmipmaps;
     int nlayers;
@@ -17,7 +17,7 @@ typedef struct im_bundle{
     int capacity;
     int length;
     slot* slots;
-} im_bundle;
+};
 
 static int slotid_cmp(const SlotID a, const SlotID b);
 

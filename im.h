@@ -92,20 +92,21 @@ extern im_img_impl *im_current_img_impl;
 #define IM_SEEK_CUR 1
 //typedef struct im_reader im_reader;
 
-struct im_reader;
+typedef struct im_reader im_reader;
 
 // abstracted interface for reading
-typedef struct im_reader {
-    size_t (*read)(struct im_reader*, void* , size_t );
-    int (*seek)(struct im_reader*, long , int);
-    int (*eof)(struct im_reader*);
-    int (*error)(struct im_reader*);
-    int (*close)(struct im_reader*);
-} im_reader;
+struct im_reader {
+    size_t (*read)(im_reader*, void* , size_t );
+    int (*seek)(im_reader*, long , int);
+    int (*eof)(im_reader*);
+    int (*error)(im_reader*);
+    int (*close)(im_reader*);
+};
 
 
 /* Bundle-related stuff */
 typedef struct im_bundle im_bundle;
+
 typedef struct SlotID {
     int frame,mipmap,layer,face;
 } SlotID;
