@@ -121,6 +121,7 @@ static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_reader* rdr, im_img* im
 static bool read_img_packed_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_8_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_BI_RLE8( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
+static bool read_img_BI_RLE4( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 
 static im_img* read_bmp_image( im_reader* rdr, ImErr* err )
 {
@@ -250,7 +251,7 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
         return false;
     }
 
-    printf("headersize: %d\n", headersize);
+    //printf("headersize: %d\n", headersize);
     if( headersize < DIB_BITMAPINFOHEADER_SIZE) {
         // treat as BITMAPCOREHEADER
         w = (int)decode_s16le(&p);
@@ -342,8 +343,8 @@ static bool read_bitmap_header(bmp_state *bmp, im_reader* rdr, ImErr* err)
         bmp->srclinesize = 0;
     }
 
-    printf("%dx%d, %d planes, %d bitcount, %d compression, %d ncolours, %d linesize\n", w,h,planes,bitcount, compression, ncolours, bmp->srclinesize);
-    printf(" mask: 0x%08x 0x%08x 0x%08x 0x%08x\n", rmask, gmask, bmask, amask);
+    //printf("%dx%d, %d planes, %d bitcount, %d compression, %d ncolours, %d linesize\n", w,h,planes,bitcount, compression, ncolours, bmp->srclinesize);
+    //printf(" mask: 0x%08x 0x%08x 0x%08x 0x%08x\n", rmask, gmask, bmask, amask);
     return true;
 }
 
@@ -403,7 +404,11 @@ static im_img* read_image(bmp_state* bmp, im_reader* rdr, ImErr* err)
     }
 
 
-    if (bmp->bitcount<8 && bmp->compression==BI_RGB) {
+    if (bmp->bitcount==4 && bmp->compression==BI_RLE4 ) {
+        if (!read_img_BI_RLE4(bmp,rdr,img,err)) {
+            goto bailout;
+        }
+    } else if (bmp->bitcount<8 && bmp->compression==BI_RGB) {
         if (!read_img_packed_BI_RGB(bmp,rdr,img,err)) {
             goto bailout;
         }
@@ -787,6 +792,124 @@ static bool read_img_BI_RLE8( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr
             x+=n;
             while (n>0) {
                 *dest++ = v;
+                --n;
+            }
+        }
+    }
+
+success:
+    ifree(buf);
+    return true;
+
+borked:
+    ifree(buf);
+    *err = ERR_MALFORMED;
+    return false;
+}
+
+
+static bool read_img_BI_RLE4( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
+{
+    uint8_t* buf;
+    uint8_t* src;
+    uint8_t* dest;
+    uint8_t* end;
+    int x,y;
+    assert(bmp->imagesize);
+    *err = ERR_NONE;
+
+    buf = imalloc(bmp->imagesize);
+    if (!buf) {
+        *err = ERR_NOMEM;
+        return false;
+    }
+
+    if (im_read(rdr,buf,bmp->imagesize) != bmp->imagesize) {
+        ifree(buf);
+        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+        return false;
+    }
+
+
+    // cheesy hackery - clear the image first. Any skipped deltas or
+    // premature EOLs will thus be left as colour 0.
+    for (y=0; y<bmp->h; ++y) {
+        memset(im_img_row(img,y), 0, bmp->w);
+    }
+
+
+    // now start decoding...
+    src = buf;
+    end = src + bmp->imagesize;
+    x=0;
+    y=0;
+    dest = im_img_pos(img, x, bmp->topdown ? y : (bmp->h-1)-y);
+    while(src < end) {
+        uint8_t n;
+        if (src+2 > end) {
+            goto borked;
+        }
+
+        n = *src++;
+        if (n==0) {
+            n = *src++;
+            if (n>2) {
+                int pad = ((n+1)/2)&1;
+                // copy next n pixels
+                if (src+(n+1)/2+pad > end) {
+                    goto borked;
+                }
+                if(x+n>bmp->w) {
+                    goto borked;
+                }
+                x+=n;
+                while( n>=2) {
+                    uint8_t c = *src++;
+                    *dest++ = c>>4;
+                    *dest++ = c & 0x0f;
+                    n-=2;
+                }
+                while( n>0) {
+                    uint8_t c = *src++;
+                    *dest++ = c>>4;
+                    --n;
+                }
+                // odd runs have a pad byte
+                src += pad;
+            } else {
+                switch (n) {
+                    case 0: // end of line
+                        x=0;
+                        ++y;
+                        break;
+                    case 1: // end of bitmap
+                        // TODO: ensure all src data is consumed?
+                        goto success;
+                    case 2: // delta
+                        x+=(int)(*src++);
+                        y+=(int)(*src++);
+                        break;
+                }
+                // update dest ptr
+                if(x>=bmp->w || y>=bmp->h) {
+                    goto borked;
+                }
+                dest = im_img_pos(img, x, bmp->topdown ? y : (bmp->h-1)-y);
+            }
+        } else {
+            uint8_t v = *src++;
+            // emit v n times
+            if (x+n>bmp->w) {
+                goto borked;
+            }
+            x+=n;
+            while (n>=2) {
+                *dest++ = v >> 4;
+                *dest++ = v & 0x0f;
+                n-=2;
+            }
+            while (n>0) {
+                *dest++ = v>>4;
                 --n;
             }
         }
