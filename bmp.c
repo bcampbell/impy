@@ -19,9 +19,14 @@ struct handler handle_bmp = {is_bmp, read_bmp_image, NULL, match_bmp_ext, NULL, 
 // https://msdn.microsoft.com/en-us/library/dd183391(v=vs.85).aspx
 // http://www.fileformat.info/format/bmp/egff.htm
 //
+// Good rle8/rel4 explanation:
+// http://www.binaryessence.com/dct/en000073.htm
+//
 // sample files:
 //
 // http://fileformats.archiveteam.org/wiki/BMP#Sample_files
+// http://entropymine.com/jason/bmpsuite/
+// (bmpsuite really is rather amazing and thorough)
 //
 
 #define BMP_FILE_HEADER_SIZE 14
@@ -690,11 +695,15 @@ static bool read_img_packed_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img,
     return true;
 }
 
+
+
+
 static bool read_img_BI_RLE8( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err)
 {
     uint8_t* buf;
     uint8_t* src;
-    uint8_t* srcend;
+    uint8_t* dest;
+    uint8_t* end;
     int x,y;
     assert(bmp->imagesize);
     *err = ERR_NONE;
@@ -710,34 +719,87 @@ static bool read_img_BI_RLE8( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr
         *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
-/*
+
+    // cheesy hackery - clear the image first. Any skipped deltas or
+    // premature EOLs will thus be left as colour 0.
+    for (y=0; y<bmp->h; ++y) {
+        memset(im_img_row(img,y), 0, bmp->w);
+    }
+
+
+    // now start decoding...
     src = buf;
-    srcend = src + bmp->imagesize;
+    end = src + bmp->imagesize;
     x=0;
     y=0;
-    while(1) {
-        uint8_t n = *src++;
-        if (n>0) {
-            uint8_t v = *src++;
-            for( ; n>0;--n) {
-                *dest++ = v;
+    dest = im_img_pos(img, x, bmp->topdown ? y : (bmp->h-1)-y);
+    while(src < end) {
+        uint8_t n;
+        if (src+2 > end) {
+            goto borked;
+        }
+
+        n = *src++;
+        if (n==0) {
+            n = *src++;
+            if (n>2) {
+                int pad = n&1;
+                // copy next n bytes
+                if (src+n+pad > end) {
+                    goto borked;
+                }
+                if(x+n>bmp->w) {
+                    goto borked;
+                }
+                x+=n;
+                while( n>0) {
+                    *dest++ = *src++;
+                    --n;
+                }
+                // odd counts have a pad byte
+                src += pad;
+            } else {
+                switch (n) {
+                    case 0: // end of line
+                        x=0;
+                        ++y;
+                        break;
+                    case 1: // end of bitmap
+                        // TODO: ensure all src data is consumed?
+                        goto success;
+                    case 2: // delta
+                        x+=(int)(*src++);
+                        y+=(int)(*src++);
+                        break;
+                }
+                // update dest ptr
+                if(x>=bmp->w || y>=bmp->h) {
+                    goto borked;
+                }
+                dest = im_img_pos(img, x, bmp->topdown ? y : (bmp->h-1)-y);
             }
         } else {
             uint8_t v = *src++;
-            if( 
+            // emit v n times
+            if (x+n>bmp->w) {
+                goto borked;
+            }
+            x+=n;
+            while (n>0) {
+                *dest++ = v;
+                --n;
+            }
         }
-
-
-
     }
-*/
 
-
-    printf("%d bytes\n", bmp->imagesize);
-cleanup:
+success:
     ifree(buf);
+    return true;
 
-    return *err == ERR_NONE;
+borked:
+    ifree(buf);
+    *err = ERR_MALFORMED;
+    return false;
 }
 
 
