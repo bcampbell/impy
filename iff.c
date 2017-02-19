@@ -221,7 +221,7 @@ static bool is_iff(const uint8_t* buf, int nbytes)
 
 static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err)
 {
-    uint8_t kind[4];
+    char kind[4];
     context* child = NULL;
     int remaining = (int)chunklen;
 
