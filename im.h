@@ -44,6 +44,7 @@ typedef enum ImErr {
     ERR_EXTLIB,         // any unspecified error in external lib
 } ImErr;
 
+// palette format
 typedef enum ImPalFmt {
     PALFMT_RGBA =0,
     PALFMT_RGB
@@ -87,6 +88,19 @@ extern im_img_impl im_default_img_impl;
 extern im_img_impl *im_current_img_impl;
 
 
+
+/* Bundle-related stuff */
+typedef struct im_bundle im_bundle;
+
+typedef struct SlotID {
+    int frame,mipmap,layer,face;
+} SlotID;
+
+
+/**********
+ * IO stuff
+ **********/
+
 /* IO abstraction - basically follows stdio.h style */
 #define IM_SEEK_SET 0
 #define IM_SEEK_CUR 1
@@ -103,18 +117,6 @@ struct im_reader {
     int (*close)(im_reader*);
 };
 
-
-/* Bundle-related stuff */
-typedef struct im_bundle im_bundle;
-
-typedef struct SlotID {
-    int frame,mipmap,layer,face;
-} SlotID;
-
-
-/**********
- * IO stuff
- **********/
 
 // open a file for reading (binary mode)
 // the returned reader uses stdio (fopen, fread etc...)
@@ -142,6 +144,9 @@ static inline int im_eof(im_reader* rdr)
 static inline int im_error(im_reader* rdr)
     { return rdr->error(rdr); }
 
+
+
+// TODO: kill the byte-unpacking io fns? They don't handle errors well.
 static inline uint8_t im_read_u8(im_reader* rdr)
 {
     uint8_t dat;
