@@ -1,4 +1,4 @@
-#include "im.h"
+#include "impxy.h"
 #include "private.h"
 
 #include <stdlib.h>
@@ -173,6 +173,8 @@ bool im_bundle_save( im_bundle* bundle, const char* filename, ImErr* err )
             *err = ERR_BADPARAM;    // bundle has no frame 0
             result = false;
         }
+    } else {
+        *err = ERR_UNSUPPORTED;
     }
 
     if (im_close_writer(out)) {

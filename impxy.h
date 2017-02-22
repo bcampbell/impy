@@ -1,5 +1,11 @@
-#ifndef IM_H
-#define IM_H
+#ifndef IMPXY_H
+#define IMPXY_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 
 #include <stddef.h>
 #include <stdint.h>
@@ -344,5 +350,9 @@ extern int im_bundle_num_frames(im_bundle* b);
 extern im_img* im_bundle_get_frame(im_bundle* b, int n);
 
 
-#endif // IM_H
+#ifdef __cplusplus
+}
+#endif
+
+#endif // IMPXY_H
 

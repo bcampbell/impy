@@ -1,4 +1,4 @@
-#include "im.h"
+#include "impxy.h"
 #include <png.h>
 #include <stdio.h>
 #include <stdint.h>

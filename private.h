@@ -2,18 +2,11 @@
 #define PRIVATE_H
 
 // private stuff, internal to library
-#include "im.h"
+#include "impxy.h"
 
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-
-#if 0
-typedef struct im_img im_img;
-typedef struct im_reader im_reader;
-typedef struct im_writer im_writer;
-typedef struct im_bundle im_bundle;
-#endif
 
 struct handler {
     bool (*match_cookie)(const uint8_t* buf, int nbytes);

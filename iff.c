@@ -1,4 +1,4 @@
-#include "im.h"
+#include "impxy.h"
 #include "private.h"
 
 #include <string.h>
@@ -178,6 +178,7 @@ static inline bool chkcc( const void* a, const void* b) {
 }
 
 static bool is_iff(const uint8_t* buf, int nbytes);
+static bool match_iff_ext(const char* file_ext);
 static im_bundle* read_iff_bundle( im_reader* rdr, ImErr* err );
 static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 static bool handle_BMHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
@@ -196,7 +197,7 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err);
 static const char* indent( int n );
 int dump_chunk( int nest, im_reader *rdr );
 
-struct handler handle_iff = {is_iff, NULL, read_iff_bundle, NULL, NULL, NULL};
+struct handler handle_iff = {is_iff, NULL, read_iff_bundle, match_iff_ext, NULL, NULL};
 
 static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err );
 
@@ -215,6 +216,18 @@ static bool is_iff(const uint8_t* buf, int nbytes)
     if (chkcc(buf+8,"ANIM")) {
         return true;
     }
+    return false;
+}
+
+static bool match_iff_ext(const char* file_ext)
+{
+    if ((istricmp(file_ext,".iff")==0) ||
+        (istricmp(file_ext,".ilbm")==0) ||
+        (istricmp(file_ext,".lbm")==0) ||
+        (istricmp(file_ext,".pbm")==0)) {
+        return true;
+    }
+
     return false;
 }
 
