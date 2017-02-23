@@ -11,7 +11,9 @@
 // format reference:
 // https://en.wikipedia.org/wiki/PCX#References
 // http://bespin.org/~qz/pc-gpe/pcx.txt
-
+//
+// pcx code from gimp:
+// https://git.gnome.org/browse/gimp/tree/plug-ins/common/file-pcx.c
 
 static bool is_pcx(const uint8_t* buf, int nbytes);
 static bool match_pcx_ext(const char* file_ext);
@@ -58,13 +60,12 @@ typedef struct header {
 } header;
 
 static bool read_header( header* pcx, im_reader* rdr, ImErr *err);
-static bool decode_scanline( header* pcx, im_reader* rdr, ImErr *err);
-static bool read_palette( header* pcx, im_reader* rdr, im_img* img, ImErr *err);
+static void decode_scanline( header* pcx, im_reader* rdr);
 
 
 static im_img* read_pcx_image( im_reader* rdr, ImErr* err )
 {
-    im_img* img;
+    im_img* img = NULL;
     header pcx = {0};
     *err = ERR_NONE;
 
@@ -72,32 +73,64 @@ static im_img* read_pcx_image( im_reader* rdr, ImErr* err )
         goto cleanup;
     }
 
-    img = im_img_new( pcx.w, pcx.h, 1, FMT_COLOUR_INDEX, DT_U8);
-    if (!img) {
-        *err = ERR_NOMEM;
-        goto cleanup;
-    }
+    // TODO: handle depth<8
 
+    if (pcx.depth==8 && pcx.planes==1) {
+        int y;
+        uint8_t cmap[1 + (256*3)] = {0};
 
-    int y;
-    for (y=0; y<pcx.h; ++y) {
-        printf("Decode line %d\n",y);
-        if (!decode_scanline(&pcx, rdr, err)) {
-            //goto cleanup;
+        img = im_img_new( pcx.w, pcx.h, 1, FMT_COLOUR_INDEX, DT_U8);
+        if (!img) {
+            *err = ERR_NOMEM;
+            goto cleanup;
         }
-        // fudge for indexed
-        {
-            int x;
+
+        for (y=0; y<pcx.h; ++y) {
+            decode_scanline(&pcx, rdr);
+            memcpy( im_img_row(img,y), pcx.scanbuf, pcx.w);
+        }
+
+        // need to seek back from end of file to get to palette. ugh.
+        // some files have dodgy RLE, so you can't always tell where the image data ends.
+        im_seek(rdr, -(1+(256*3)), IM_SEEK_END);
+        if (im_read(rdr, cmap, 1+(256*3)) != 1+(256*3)) {
+            *err = ERR_MALFORMED;
+            goto cleanup;
+        }
+        // cmap is preceeded by marker byte 0x0c;
+        if( cmap[0] != 0x0c ) {
+            *err = ERR_MALFORMED;
+            goto cleanup;
+        }
+        im_img_pal_set(img, PALFMT_RGB, 256, cmap+1);
+
+    } else if (pcx.depth==8 && pcx.planes==3) {
+        int y;
+
+        img = im_img_new( pcx.w, pcx.h, 1, FMT_RGB, DT_U8);
+        if (!img) {
+            *err = ERR_NOMEM;
+            goto cleanup;
+        }
+
+        for (y=0; y<pcx.h; ++y) {
+            uint8_t* r = pcx.scanbuf;
+            uint8_t* g = pcx.scanbuf + pcx.bytesperline;
+            uint8_t* b = pcx.scanbuf + (pcx.bytesperline*2);
             uint8_t* dest = im_img_row(img,y);
-            for( x=0;x<pcx.w; ++x) {
-                *dest++ = pcx.scanbuf[x];
+            int x;
+            decode_scanline(&pcx, rdr);
+            for(x=0;x<pcx.w; ++x) {
+                *dest++ = *r++;
+                *dest++ = *g++;
+                *dest++ = *b++;
             }
         }
-    }
-
-    if( !read_palette(&pcx,rdr,img,err) ) {
+    } else {
+        *err = ERR_UNSUPPORTED;
         goto cleanup;
     }
+
 
 cleanup:
 
@@ -147,9 +180,9 @@ static bool read_header( header* pcx, im_reader* rdr, ImErr *err)
     pcx->bytesperline = (size_t)decode_u16le(&p);
     pcx->paltype = (int)decode_u16le(&p);
 
-    printf("min: %d,%d max: %d,%d (%dx%d) version: %d enc: %d depth: %d planes: %d xdpi: %d ydpi: %d bytesperline: %d paltype: %d\n",
+    /*printf("min: %d,%d max: %d,%d (%dx%d) version: %d enc: %d depth: %d planes: %d xdpi: %d ydpi: %d bytesperline: %d paltype: %d\n",
             pcx->xmin,pcx->ymin, pcx->xmax,pcx->ymax, pcx->w,pcx->h,pcx->version, pcx->enc, pcx->depth, pcx->planes, pcx->xdpi, pcx->ydpi, pcx->bytesperline, pcx->paltype);
-
+    */
 
     // some sanity checks
     if (!is_pcx(buf,128) ) {
@@ -171,76 +204,44 @@ static bool read_header( header* pcx, im_reader* rdr, ImErr *err)
 
 
 // decode a line (can be multiple planes, as rle can span planes)
-static bool decode_scanline( header* pcx, im_reader* rdr, ImErr *err)
+// we're pretty tolerant of dodgy data.
+static void decode_scanline( header* pcx, im_reader* rdr)
 {
-    int expect = pcx->bytesperline * pcx->planes;
-    int got=0;  // num bytes emitted so far
-    uint8_t n,v;
+    int outcnt = (pcx->bytesperline * pcx->planes);
+    uint8_t val,reps;
     uint8_t* dest = pcx->scanbuf;
 
-    printf("EXPECT %d\n",expect);
-    while (got<expect) {
-        if (im_read(rdr,&n,1) != 1) {
-            printf("ERROR: BADBYTE\n");
-            *err = im_eof(rdr)? ERR_MALFORMED:ERR_FILE;
-            return false;
-        }
-        if ((n & 0xc0) == 0xc0) {
-            // repeat next byte
-            int reps = (int)(n & 0x3f);
-            if (im_read(rdr,&v,1) != 1) {
-                *err = im_eof(rdr)? ERR_MALFORMED:ERR_FILE;
-                printf("ERROR: BADREP\n");
+    reps = 0;
+    while (outcnt>0) {
+        if (reps==0) {
+            if (im_read(rdr,&val,1) != 1) {
+                //printf("ERROR: BADBYTE\n");
+                /**err = im_eof(rdr)? ERR_MALFORMED:ERR_FILE;
                 return false;
+                */
+                val=0;
             }
-            printf( "%d-%d ", got, got+reps);
-            printf("0x%02x\n", (int)v);
-            got += reps;
-            if(got>expect) {
-                *err = ERR_MALFORMED;
-                printf("ERROR: overflow\n");
-                return false;
+            if (val >= 0xc0) {
+                reps = (val - 0xc0);
+                if (im_read(rdr,&val,1) != 1) {
+                    //*err = im_eof(rdr)? ERR_MALFORMED:ERR_FILE;
+                    //printf("ERROR: BADREP\n");
+                    val=0;
+                }
+                //printf("0x%02x x%d (%d left)\n",val, reps, outcnt);
+            } else {
+                reps = 1;
+                //printf("0x%02x (%d left)\n",val, outcnt);
             }
-            while(reps>0) {
-                *dest++ = v;
-                --reps;
-            }
-        } else {
-            printf( "%d: 0x%02x\n", got, (int)n);
-            *dest++ = n;
-            ++got;
         }
+        *dest++ = val;
+        --reps;
+        --outcnt;
     }
-    printf("decode done\n");
-    return true;
+    //if( reps>0) {
+    //    printf("WARN: leftover %d reps\n",(int)reps);
+    //}
 }
 
-
-static bool read_palette( header* pcx, im_reader* rdr, im_img* img, ImErr *err)
-{
-    uint8_t buf[32];
-    int y;
-    int i;
-
-    if (im_read(rdr, &buf,16) != 16) {
-        printf("semprini.\n");
-    } else {
-        printf("palette dump:\n");
-        for (i=0; i<32;++i) {
-            printf("%02x ",(int)buf[i]);
-        }
-        printf("\n");
-    }
-
-
-    im_img_pal_set(img, PALFMT_RGB, 256, NULL);
-    uint8_t* p = im_img_pal_data(img);
-    for(y=0; y<=255; ++y) {
-        *p++ = y;
-        *p++ = y;
-        *p++ = y;
-    }
-    return true;
-}
 
 

@@ -35,6 +35,7 @@ static int file_reader_seek(im_reader* r, long pos, int whence)
     switch(whence) {
         case IM_SEEK_SET: w = SEEK_SET; break;
         case IM_SEEK_CUR: w = SEEK_CUR; break;
+        case IM_SEEK_END: w = SEEK_END; break;
         default:
             //im_err(ERR_BADPARAM);
             return -1;

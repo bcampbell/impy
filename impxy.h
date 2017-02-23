@@ -110,6 +110,7 @@ typedef struct SlotID {
 /* IO abstraction - basically follows stdio.h style */
 #define IM_SEEK_SET 0
 #define IM_SEEK_CUR 1
+#define IM_SEEK_END 2
 //typedef struct im_reader im_reader;
 
 typedef struct im_reader im_reader;
