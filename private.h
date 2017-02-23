@@ -36,6 +36,29 @@ extern struct handler handle_png;
 extern struct handler handle_gif;
 extern struct handler handle_iff;
 extern struct handler handle_bmp;
+extern struct handler handle_pcx;
+
+
+// binary decode helpers
+static inline uint32_t decode_u32le(uint8_t** cursor)
+{
+    uint8_t* p = *cursor;
+    *cursor += 4;
+    return (p[3]<<24) | (p[2]<<16) | (p[1]<<8) | p[0];
+}
+
+static inline uint16_t decode_u16le(uint8_t** cursor) {
+    uint8_t* p = *cursor;
+    *cursor += 2;
+    return (p[1]<<8) | p[0];
+}
+
+static inline int32_t decode_s32le(uint8_t** cursor)
+    { return (int32_t)decode_u32le(cursor); }
+
+static inline int16_t decode_s16le(uint8_t** cursor)
+    { return (int16_t)decode_u16le(cursor); } 
+
 #endif
 
 

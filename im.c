@@ -7,7 +7,7 @@
 
 
 
-static struct handler *handlers[] = { &handle_png, &handle_gif, &handle_iff, &handle_bmp, NULL };
+static struct handler *handlers[] = { &handle_png, &handle_gif, &handle_iff, &handle_bmp, &handle_pcx, NULL };
 
 
 static struct handler* pick_handler_for_read(im_reader* rdr);
