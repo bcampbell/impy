@@ -25,6 +25,14 @@ Generic unix steps:
     $ make
     $ sudo make install
 
+Rough edges:
+
+* requires a really really recent version of cmake to correctly detect giflib 5.
+  You can fudge around this by changing the `5` in `find_package(GIF 5 REQUIRED)`
+  to `4` instead.
+* one of the examples, impyview, requires SDL2. No fancy cmake options yet, but you
+  can just comment out the `impyview` bits of `examples/CMakeLists.txt` to skip it.
+
 ## API
 
 Not yet. `impy.h` is the public interface, but it's subject to massive change.
