@@ -1,6 +1,6 @@
 // default im_img implementation
 
-#include "impxy.h"
+#include "impy.h"
 #include "private.h"
 
 #include <string.h>

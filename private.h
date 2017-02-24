@@ -2,7 +2,7 @@
 #define PRIVATE_H
 
 // private stuff, internal to library
-#include "impxy.h"
+#include "impy.h"
 
 #include <stdio.h>
 #include <stdint.h>

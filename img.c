@@ -1,6 +1,6 @@
 // implementation-neutral support for im_img
 
-#include "impxy.h"
+#include "impy.h"
 #include "private.h"
 
 #include <string.h>    // for memcpy
