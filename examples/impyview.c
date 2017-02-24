@@ -1,4 +1,4 @@
-#include "impxy.h"
+#include "impy.h"
 #include <stdio.h>
 
 #include <SDL.h>
