@@ -182,6 +182,7 @@ static bool match_iff_ext(const char* file_ext);
 static im_bundle* read_iff_bundle( im_reader* rdr, ImErr* err );
 static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 static bool handle_BMHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
+static bool handle_CAMG( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 static bool handle_CMAP( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 static bool handle_BODY( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
 static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
@@ -195,7 +196,9 @@ static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data
 static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err);
 
 static const char* indent( int n );
+#if 0
 int dump_chunk( int nest, im_reader *rdr );
+#endif
 
 struct handler handle_iff = {is_iff, NULL, read_iff_bundle, match_iff_ext, NULL, NULL};
 
@@ -249,11 +252,11 @@ static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
     }
     remaining -= 4;
 
-    printf("%sformtype=%c%c%c%c\n", indent(ctx->level), kind[0], kind[1], kind[2], kind[3]);
+    //printf("%sformtype=%c%c%c%c\n", indent(ctx->level), kind[0], kind[1], kind[2], kind[3]);
 
     if (!chkcc(kind,"ILBM") && !chkcc(kind,"PBM ") && !chkcc(kind,"ANIM")) {
         // unsupported FORM type (eg 8SVX sound)- skip it
-        printf("%s->skip\n", indent(ctx->level));
+        //printf("%s->skip\n", indent(ctx->level));
         if(im_seek(rdr,remaining, SEEK_CUR) != 0 ) {
             *err = ERR_FILE;
             return false;
@@ -322,11 +325,33 @@ static bool handle_BMHD(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
         *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
-    printf("%s %dx%d planes: %d masking: %d compression: 0x%02x\n", indent(ctx->level), bmhd->w, bmhd->h, bmhd->nPlanes, bmhd->masking, bmhd->compression);
+    //printf("%s %dx%d planes: %d masking: %d compression: 0x%02x\n", indent(ctx->level), bmhd->w, bmhd->h, bmhd->nPlanes, bmhd->masking, bmhd->compression);
     f->got_bmhd = true;
     return true;
 }
 
+static bool handle_CAMG(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *err )
+{
+    uint8_t buf[4];
+    uint32_t mode;
+    if( chunklen!=4) {
+        *err = ERR_MALFORMED;
+        return false;
+    }
+    if (im_read(rdr,buf,4)!=4) {
+        *err = im_eof(rdr)?ERR_MALFORMED:ERR_FILE;
+        return false;
+    }
+
+    mode = buf[0] <<24 | buf[1]<<16 | buf[2]<<8 | buf[3];
+/*
+    printf("mode: 0x%08x\n", mode);
+    if (mode & 0x800) {
+        printf("  ->HAM\n");
+    }
+    */
+    return true;
+}
 
 static bool handle_CMAP(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *err )
 {
@@ -387,7 +412,7 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
     }
 
     if (f->bmhd.masking !=0) {
-        printf("MASKING=%d\n",f->bmhd.masking );
+        //printf("MASKING=%d\n",f->bmhd.masking );
         *err = ERR_MALFORMED;   // got BODY before BMHD
         return false;
     }
@@ -446,7 +471,7 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
 
 
     if( consumed<chunklen) {
-        printf("%s*** warn: decode left %d bytes\n", indent(ctx->level), chunklen-consumed);
+        //printf("%s*** warn: decode left %d bytes\n", indent(ctx->level), chunklen-consumed);
         if (im_seek(rdr,chunklen-consumed, SEEK_CUR) != 0 ) {
             return false;
         }
@@ -535,6 +560,7 @@ static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
         *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
+/*
     printf("%s op: 0x%02x mask: 0x%02x %d,%d %dx%d reltime: %d interleave: 0x%02x, bits: 0x%08x\n",
         indent(ctx->level),
         anhd->operation,
@@ -546,7 +572,7 @@ static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
         anhd->reltime,
         anhd->interleave,
         anhd->bits);
-
+*/
     f->got_anhd = true;    
     return true;
 }
@@ -603,7 +629,7 @@ static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
 //        *err = ERR_MALFORMED;
  //       return false;
     }
-    printf("copy from frame %d\n",fromidx);
+    //printf("copy from frame %d\n",fromidx);
 
     from = ctx->frames[fromidx];
     if(!from->image_data) {
@@ -654,10 +680,11 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
     for (plane=0; plane<nplanes; ++plane) {
         const uint8_t* p = src + plane*4;
         start[plane] = (p[0]<<24) | (p[1]<<16) | (p[2]<<8) | p[3]; 
-        printf("plane %d @ 0x%08x\n",plane,start[plane]);
+        //printf("plane %d @ 0x%08x\n",plane,start[plane]);
     }
 
     // dump
+    /*
     int j;
     for( j=0; j<srclen; ++j) {
         if( (j&7) == 0 ) {
@@ -666,10 +693,11 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
         printf("%02x ",src[j]);
     }
     printf("\n");
+    */
 
     for (plane=0; plane<nplanes; ++plane) {
         pos = start[plane];
-        printf("plane %d (pos %d)\n", plane,pos);
+        //printf("plane %d (pos %d)\n", plane,pos);
         if (!pos) {
             continue;
         }
@@ -682,15 +710,15 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
             int opcnt;
             int i;
             if (pos+1>srclen) {
-                printf("expect more cols\n");
+                //printf("expect more cols\n");
                 return false;
             }
             opcnt = (int)src[pos++];
 
-            printf(" col %d/%d (%d ops)\n", col, ncols, opcnt);
+            //printf(" col %d/%d (%d ops)\n", col, ncols, opcnt);
             y=0;
             for (i=0; i<opcnt; ++i) {
-                printf("  y=%d\n", y);
+                //printf("  y=%d\n", y);
                 if (pos+1 > srclen) {
                     return false;
                 }
@@ -703,7 +731,7 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
                     }
                     cnt = src[pos++];
                     val = src[pos++];
-                    printf("    rep %d %d\n", cnt,val);
+                    //printf("    rep %d %d\n", cnt,val);
                     if (y+cnt > height) {
                         return false;
                     }
@@ -716,7 +744,7 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
                 } else if (op<128) {
                     // skip
                     int cnt = (int)op;
-                    printf("    skip %d\n", cnt);
+                    //printf("    skip %d\n", cnt);
                     if (y+cnt > height) {
                         return false;
                     }
@@ -724,7 +752,7 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
                     y+=cnt;
                 } else if (op>=128) {
                     int cnt = (int)(op&0x7f);
-                    printf("    uniq %d\n", cnt);
+                    //printf("    uniq %d\n", cnt);
                     if (pos+cnt > srclen || y+cnt > height ) {
                         return false;
                     }
@@ -761,9 +789,15 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
     uint32_t chunklen;
     bool success;
     int consumed = 0;
+
     if(im_read(rdr, buf,8) != 8) {
-            printf("POO1\n");
-        *err = ERR_MALFORMED;   // TODO: distingush between read error and eof
+        // FUDGE for malformed files (eg Juggler.anim)
+        // we'll be lenient if file ends prematurely,
+        // but on a chunk boundary.
+        if (im_eof(rdr)) {
+            return chunklen;
+        }
+        *err = ERR_FILE;
         return -1;
     }
     consumed += 8;
@@ -772,7 +806,7 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
         ((uint32_t)buf[6])<<8 |
         ((uint32_t)buf[7]);
 
-    printf("%s%c%c%c%c [%d bytes]\n", indent(ctx->level), buf[0], buf[1], buf[2], buf[3], chunklen );
+    //printf("%s%c%c%c%c [%d bytes]\n", indent(ctx->level), buf[0], buf[1], buf[2], buf[3], chunklen );
     if (chkcc(buf,"FORM")) {
 //        printf("%d: enter FORM\n", ctx->level);
         ++ctx->level;
@@ -784,6 +818,8 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
         success = handle_BMHD(ctx,rdr,chunklen, err);
     } else if (chkcc(buf,"CMAP")) {
         success = handle_CMAP(ctx,rdr,chunklen, err);
+    } else if (chkcc(buf,"CAMG")) {
+        success = handle_CAMG(ctx,rdr,chunklen, err);
     } else if (chkcc(buf,"BODY")) {
         success = handle_BODY(ctx,rdr,chunklen, err);
     } else if (chkcc(buf,"ANHD")) {
@@ -801,7 +837,7 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
     }
 
     if (!success) {
-            printf("POO2\n");
+//        printf("parse_chunk(%c%c%c%c) failed\n", buf[0], buf[1], buf[2], buf[3]);
         return -1;
     }
 
@@ -811,7 +847,6 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
         // read the pad byte
         if (im_seek(rdr, 1, SEEK_CUR)!=0) {
             *err = ERR_MALFORMED;
-            printf("POO3\n");
             return -1;
         }
         consumed += 1;
@@ -875,7 +910,7 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
     im_img* img = NULL;
     for (i=0; i<ctx->nframes; ++i) {
         frame* f = ctx->frames[i];
-        printf("add frame %d\n", i);
+        //printf("add frame %d\n", i);
 
         // track latest cmap as we go
         if (f->cmap_data) {
@@ -998,7 +1033,7 @@ static const char* indent( int n ) {
     return buf + (MAXINDENT-n)*2;
 }
 
-
+#if 0
 int dump_chunk( int nest, im_reader *rdr )
 {
 
@@ -1006,12 +1041,11 @@ int dump_chunk( int nest, im_reader *rdr )
     uint32_t len;
     int consumed = 0;
     if( im_read(rdr, kind, 4)!=4) {
-        printf("ERR reading fourCC (eof=%d)\n", im_eof(rdr));
+        //printf("ERR reading fourCC (eof=%d)\n", im_eof(rdr));
         return -1;
     }
     len = im_read_u32be(rdr);
     if (im_error(rdr)) {
-        printf("ERR2\n");
         return -1;
     }
     consumed += 8;
@@ -1055,6 +1089,6 @@ int dump_chunk( int nest, im_reader *rdr )
     }
     return consumed;
 }
-
+#endif
 
 
