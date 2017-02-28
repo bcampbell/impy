@@ -117,6 +117,7 @@ typedef struct im_reader im_reader;
 struct im_reader {
     size_t (*read)(im_reader*, void* , size_t );
     int (*seek)(im_reader*, long , int);
+    int (*tell)(im_reader*);
     int (*eof)(im_reader*);
     int (*error)(im_reader*);
     int (*close)(im_reader*);
@@ -141,7 +142,12 @@ static inline size_t im_read(im_reader* rdr, void* buf, size_t nbytes)
 
 // returns 0 for success, non-zero for error
 static inline int im_seek(im_reader* rdr, long pos, int whence)
-    { return  rdr->seek(rdr, pos, whence); }
+    { return rdr->seek(rdr, pos, whence); }
+ 
+// returns current position, -1 for error
+static inline int im_tell(im_reader* rdr)
+    { return rdr->tell(rdr); }
+
 
 // im_eof returns non-zero if the reader is out of data
 static inline int im_eof(im_reader* rdr)

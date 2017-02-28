@@ -48,6 +48,15 @@ static int file_reader_seek(im_reader* r, long pos, int whence)
     return ret;
 }
 
+static int file_reader_tell(im_reader* r)
+{
+    struct file_reader *fr = (struct file_reader*)r;
+    int w;
+    int ret;
+    return ftell(fr->fp);
+}
+
+
 static int file_reader_eof(im_reader* r)
 {
     struct file_reader *fr = (struct file_reader*)r;
@@ -93,6 +102,7 @@ im_reader* im_open_file_reader( const char* filename, ImErr* err)
 
     rdr->base.read = file_reader_read;
     rdr->base.seek = file_reader_seek;
+    rdr->base.tell = file_reader_tell;
     rdr->base.eof = file_reader_eof;
     rdr->base.error = file_reader_error;
     rdr->base.close = file_reader_close;
