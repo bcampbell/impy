@@ -764,14 +764,16 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_img*
     int y;
     ColorMapObject* frame_cm = NULL;
     int trans = global_trans;
-    int width = im_img_w(img);
-    int height = im_img_h(img);
+    int width,height;
 
     img = im_bundle_get_frame(bundle,frame);
     if(!img) {
         *err = ERR_BADPARAM;
         return false;
     }
+
+    width = im_img_w(img);
+    height = im_img_h(img);
 
     // sanity checking
     if( im_img_format(img) != FMT_COLOUR_INDEX ) {
