@@ -60,6 +60,43 @@ static inline int32_t decode_s32le(uint8_t** cursor)
 static inline int16_t decode_s16le(uint8_t** cursor)
     { return (int16_t)decode_u16le(cursor); } 
 
+
+static inline void encode_u32le(uint8_t** cursor, uint32_t val)
+{
+    uint8_t* p = *cursor;
+    *cursor += 4;
+    p[0] = val & 0xff;
+    p[1] = (val >> 8) & 0xff;
+    p[2] = (val >> 16) & 0xff;
+    p[3] = (val >> 24) & 0xff;
+}
+
+static inline void encode_u16le(uint8_t** cursor, uint16_t val)
+{
+    uint8_t* p = *cursor;
+    *cursor += 2;
+    p[0] = val & 0xff;
+    p[1] = (val >> 8) & 0xff;
+}
+
+static inline void encode_s32le(uint8_t** cursor, int32_t val)
+    { encode_u32le(cursor, (int32_t)val); }
+
+static inline void encode_s16le(uint8_t** cursor, int16_t val)
+    { encode_u16le(cursor, (int16_t)val); }
+
+
+
+
+
+/* format conversion helpers (convert.c) */
+
+// signature for a fn to convert w pixels
+typedef void (*im_convert_fn)( const uint8_t* src, uint8_t* dest, int w);
+
+// pick a conversion fn
+extern im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, ImDatatype destDT );
+
 #endif
 
 

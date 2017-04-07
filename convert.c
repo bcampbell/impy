@@ -1,4 +1,5 @@
 #include "impy.h"
+#include "private.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -249,16 +250,15 @@ static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const
 }
 
 
-
-
-/*  */
-static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
+im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, ImDatatype destDT )
 {
-    im_img* destImg = NULL;
+    im_convert_fn fn = NULL;
 
-    // pick line-converter
-    void (*fn)( const uint8_t* src, uint8_t* dest, int w) = NULL;
-    switch (im_img_format(srcImg)) {
+    if (srcDT != DT_U8 || destDT != DT_U8) {
+        return NULL;
+    }
+
+    switch (srcFmt) {
         case FMT_RGB:
             switch (destFmt) {
                 case FMT_RGB: fn=cvt_u8RGB_u8RGB; break;
@@ -315,8 +315,19 @@ static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype d
             }
             break;
         default:
-            return NULL;
+            break;
     }
+    return fn;
+}
+
+
+/*  */
+static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
+{
+    im_img* destImg = NULL;
+
+    im_convert_fn fn = pick_convert_fn(im_img_format(srcImg), im_img_datatype(srcImg), destFmt, destDatatype);
+
     if (fn==NULL) {
         return NULL;
     }

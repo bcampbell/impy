@@ -430,6 +430,9 @@ extern im_img* im_bundle_get_frame(im_bundle* b, int n);
 // is passed to the caller.
 // extern im_img* im_bundle_detach(im_bundle* b, SlotID id);
 
+
+
+
 #ifdef __cplusplus
 }
 #endif
