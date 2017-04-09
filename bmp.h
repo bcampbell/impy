@@ -1,6 +1,9 @@
 #ifndef BMP_H_INCLUDED
 #define BMP_H_INCLUDED
 
+#include "impy.h"
+
+
 #define BMP_FILE_HEADER_SIZE 14
 
 #define DIB_BITMAPCOREHEADER_SIZE 12
@@ -22,6 +25,11 @@
 #define BI_CMYK 11
 #define BI_CMYKRLE8 12
 #define BI_CMYKRLE4 13
+
+bool im_is_bmp(const uint8_t* buf, int nbytes);
+bool im_ext_match_bmp(const char* file_ext);
+im_img* im_img_read_bmp( im_reader* rdr, ImErr* err );
+bool im_img_write_bmp(im_img* img, im_writer* out, ImErr* err);
 
 #endif // BMP_H_INCLUDED
 

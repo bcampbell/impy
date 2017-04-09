@@ -5,6 +5,10 @@ add_executable(imginfo imginfo.c)
 target_include_directories( imginfo PRIVATE .. )
 target_link_libraries(imginfo impy)
 
+add_executable(impyconvert impyconvert.c)
+target_include_directories( impyconvert PRIVATE .. )
+target_link_libraries(impyconvert impy)
+
 include(FindPkgConfig)
 pkg_search_module(SDL2 REQUIRED sdl2)
 add_executable(impyview impyview.c)

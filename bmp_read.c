@@ -8,12 +8,6 @@
 #include <limits.h>
 
 
-static bool is_bmp(const uint8_t* buf, int nbytes);
-static bool match_bmp_ext(const char* file_ext);
-static im_img* read_bmp_image( im_reader* rdr, ImErr* err );
-//static bool write_bmp_image(im_img* img, im_writer* out, ImErr* err);
-
-struct handler handle_bmp = {is_bmp, read_bmp_image, NULL, match_bmp_ext, NULL, NULL};
 
 //
 // bmp format reference:
@@ -59,12 +53,12 @@ typedef struct bmp_state {
     uint8_t* linebuf;
 } bmp_state;
 
-static bool is_bmp(const uint8_t* buf, int nbytes)
+bool im_is_bmp(const uint8_t* buf, int nbytes)
 {
     return buf[0]=='B' && buf[1] == 'M';
 }
 
-static bool match_bmp_ext(const char* file_ext)
+bool im_ext_match_bmp(const char* file_ext)
 {
     return (istricmp(file_ext,".bmp")==0);
 }
@@ -84,7 +78,7 @@ static bool read_img_8_BI_RGB( bmp_state* bmp, im_reader* rdr, im_img* img, ImEr
 static bool read_img_BI_RLE8( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 static bool read_img_BI_RLE4( bmp_state* bmp, im_reader* rdr, im_img* img, ImErr* err);
 
-static im_img* read_bmp_image( im_reader* rdr, ImErr* err )
+im_img* im_img_read_bmp( im_reader* rdr, ImErr* err )
 {
     bmp_state bmp = {0};
     uint8_t* p;
@@ -141,7 +135,7 @@ static bool read_file_header(bmp_state *bmp, im_reader* rdr, ImErr* err) {
         return false;
     }
 
-    if (!is_bmp(buf, BMP_FILE_HEADER_SIZE)) {
+    if (!im_is_bmp(buf, BMP_FILE_HEADER_SIZE)) {
         *err = ERR_MALFORMED;
         return false;
     }

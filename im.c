@@ -1,10 +1,18 @@
 #include "impy.h"
 #include "private.h"
+#include "bmp.h"
 
 #include <stdlib.h>
 #include <string.h> // for memcmp
 #include <stdio.h>
 
+static struct handler handle_bmp = {
+    im_is_bmp,
+    im_img_read_bmp,
+    NULL,
+    im_ext_match_bmp,
+    im_img_write_bmp,
+    NULL };
 
 
 static struct handler *handlers[] = { &handle_png, &handle_gif, &handle_iff, &handle_bmp, &handle_pcx, &handle_jpeg, NULL };

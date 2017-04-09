@@ -1,4 +1,4 @@
-#include "im.h"
+#include "impy.h"
 #include <stdio.h>
 
 
@@ -14,16 +14,16 @@ int main( int argc, char* argv[])
         return 1;
     }
 
-
-    im_bundle* bundle = im_bundle_load(argv[1]);
+    ImErr err;
+    im_bundle* bundle = im_bundle_load(argv[1], &err);
     if (bundle==NULL) {
-        fprintf(stderr,"Poop.\n");
+        fprintf(stderr,"Load failed (ImErr %d)\n", err);
         return 1;
     }
 
 
-    if(!im_bundle_save(bundle,argv[2]) ) {
-        fprintf(stderr,"save failed.\n");
+    if (!im_bundle_save(bundle,argv[2], &err) ) {
+        fprintf(stderr,"Save failed (ImErr %d)\n", err);
         return 1;
     }
 
