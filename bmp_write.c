@@ -14,7 +14,17 @@
 
 
 static bool write_file_header(size_t fileSize, size_t imageOffset, im_writer* out, ImErr* err);
-static bool write_bitmap_header(im_img* img, size_t imageByteSize, im_writer* out, ImErr* err);
+static bool write_bitmapinfoheader(int w, int h,
+    size_t imageByteSize,
+    int compression, int bitcount,
+    im_writer* out, ImErr* err);
+
+static bool write_bitmapv4header( int w, int h,
+    size_t imageByteSize,
+    int compression, int bitcount,
+    uint32_t rmask, uint32_t gmask, uint32_t bmask, uint32_t amask,
+    im_writer* out, ImErr* err);
+
 static bool write_uncompressed(im_img* img, im_writer* out, ImErr* err);
 
 
@@ -49,53 +59,20 @@ static bool write_file_header(size_t fileSize, size_t imageOffset, im_writer* ou
     return true;
 }
 
-/*
-typedef struct tagBITMAPINFOHEADER {
-  DWORD biSize;
-  LONG  biWidth;
-  LONG  biHeight;
-  WORD  biPlanes;
-  WORD  biBitCount;
-  DWORD biCompression;
-  DWORD biSizeImage;
-  LONG  biXPelsPerMeter;
-  LONG  biYPelsPerMeter;
-  DWORD biClrUsed;
-  DWORD biClrImportant;
-} BITMAPINFOHEADER, *PBITMAPINFOHEADER;
-*/
 
-static bool write_bitmap_header(im_img* img, size_t imageByteSize, im_writer* out, ImErr* err)
+static bool write_bitmapinfoheader(int w, int h,
+    size_t imageByteSize,
+    int compression, int bitcount,
+    im_writer* out, ImErr* err)
 {
     uint8_t buf[DIB_BITMAPINFOHEADER_SIZE];
-    int bitcount;
-    ImFmt img_fmt = im_img_format(img);
-
-    switch(img_fmt) {
-        case FMT_RGB:
-        case FMT_BGR:
-            bitcount=24;
-            break;
-        case FMT_RGBA:
-        case FMT_BGRA:
-            bitcount=32;
-            break;
-        case FMT_COLOUR_INDEX:
-            bitcount=8;
-            break;
-        case FMT_ALPHA:
-        case FMT_LUMINANCE:
-            *err = ERR_UNSUPPORTED;
-            return false;
-    }
-
     uint8_t* p = buf;
     encode_u32le(&p, DIB_BITMAPINFOHEADER_SIZE);
-    encode_s32le(&p, im_img_w(img));
-    encode_s32le(&p, im_img_h(img));    // +ve => we'll save as bottom-up
+    encode_s32le(&p, w);
+    encode_s32le(&p, h);    // +ve => we'll save as bottom-up
     encode_u16le(&p, 1);                // planes
     encode_u16le(&p, bitcount);         // 8, 24, 32
-    encode_u32le(&p, BI_RGB);           //biCompression
+    encode_u32le(&p, compression);           //biCompression
     encode_u32le(&p, imageByteSize);    //biSizeImage (0 ok for uncompressed)
     encode_s32le(&p, 256);
     encode_s32le(&p, 256);
@@ -112,6 +89,54 @@ static bool write_bitmap_header(im_img* img, size_t imageByteSize, im_writer* ou
 }
 
 
+// BITMAPV4HEADER seems to be the first one with decent alpha support
+static bool write_bitmapv4header( int w, int h,
+    size_t imageByteSize,
+    int compression, int bitcount,
+    uint32_t rmask, uint32_t gmask, uint32_t bmask, uint32_t amask,
+    im_writer* out, ImErr* err)
+{
+    uint8_t buf[DIB_BITMAPV4HEADER_SIZE];
+
+    uint8_t* p = buf;
+    encode_u32le(&p, DIB_BITMAPV4HEADER_SIZE);
+    encode_s32le(&p, w);
+    encode_s32le(&p, h);    // +ve => we'll save as bottom-up
+    encode_u16le(&p, 1);                // planes
+    encode_u16le(&p, bitcount);         // 8, 24, 32
+    encode_u32le(&p, compression);           //biCompression
+    encode_u32le(&p, imageByteSize);    //biSizeImage (0 ok for uncompressed)
+    encode_s32le(&p, 256);
+    encode_s32le(&p, 256);
+    encode_u32le(&p, 0);                // biClrUsed
+    encode_u32le(&p, 0);                // biClrImportant
+
+    encode_u32le(&p, rmask);   // DWORD bV4RedMask;
+    encode_u32le(&p, gmask);   // DWORD bV4GreenMask;
+    encode_u32le(&p, bmask);   // DWORD bV4BlueMask;
+    encode_u32le(&p, amask);   // DWORD bV4AlphaMask;
+    // DWORD bV4CSType;
+    // LCS_WINDOWS_COLOR_SPACE
+    *p++ = ' ';
+    *p++ = 'n';
+    *p++ = 'i';
+    *p++ = 'w';
+
+    memset(p, 0, 3*3*4);     //  CIEXYZTRIPLE bV5Endpoints;
+    p += 3*3*4;
+    encode_u32le(&p, 0);   // DWORD bV4GammaRed;
+    encode_u32le(&p, 0);   // DWORD bV4GammaGreen;
+    encode_u32le(&p, 0);   // DWORD bV4GammaBlue;
+    assert(p-buf == DIB_BITMAPV4HEADER_SIZE );
+
+    if (im_write(out, buf, DIB_BITMAPV4HEADER_SIZE) != DIB_BITMAPV4HEADER_SIZE) {
+        *err = ERR_FILE;
+        return false;
+    }
+    return true;
+}
+
+// write uncompressed image data
 static bool write_uncompressed(im_img* img, im_writer* out, ImErr* err)
 {
     int x,y;
@@ -164,27 +189,75 @@ static bool write_uncompressed(im_img* img, im_writer* out, ImErr* err)
 }
 
 
-
+// write a img out to a .bmp file
 bool im_img_write_bmp(im_img* img, im_writer* out, ImErr* err)
 {
+
+    int w = im_img_w(img);
+    int h = im_img_h(img);
+    size_t paletteByteSize = 0;
+    size_t imageOffset;
+    size_t imageByteSize = w*h*im_img_bytesperpixel(img);
+    size_t fileSize;
+
+    int bitcount;
+    int compression;
+    uint32_t rmask, gmask, bmask, amask;
+    ImFmt img_fmt = im_img_format(img);
+    size_t dibheadersize = DIB_BITMAPINFOHEADER_SIZE;
+
     if (im_img_datatype(img) != DT_U8) {
         *err = ERR_UNSUPPORTED;
         return false;
     } 
 
-    size_t paletteByteSize = 0;
-    size_t imageOffset = BMP_FILE_HEADER_SIZE + DIB_BITMAPINFOHEADER_SIZE + paletteByteSize;
-    size_t imageByteSize = im_img_w(img)*im_img_h(img)*im_img_bytesperpixel(img);
-    size_t fileSize = imageOffset + imageByteSize;
+    switch(img_fmt) {
+        case FMT_RGB:
+        case FMT_BGR:
+            compression=BI_RGB;
+            bitcount=24;
+            break;
+        case FMT_RGBA:
+        case FMT_BGRA:
+            // use v4 header for alpha support
+            dibheadersize = DIB_BITMAPV4HEADER_SIZE;
+            compression=BI_BITFIELDS;
+            rmask = 0x00ff0000;
+            gmask = 0x0000ff00;
+            bmask = 0x000000ff;
+            amask = 0xff000000;
+            bitcount=32;
+            break;
+        case FMT_COLOUR_INDEX:
+            compression=BI_RGB;
+            bitcount=8;
+//            paletteByteSize =  TODO!
+            break;
+        case FMT_ALPHA:
+        case FMT_LUMINANCE:
+            *err = ERR_UNSUPPORTED;
+            return false;
+    }
+
+    imageOffset = BMP_FILE_HEADER_SIZE + dibheadersize + paletteByteSize;
+    fileSize = imageOffset + imageByteSize;
 
     if(!write_file_header(fileSize, imageOffset, out, err)) {
         return false;
     }
 
-    if(!write_bitmap_header(img, imageByteSize, out, err)) {
-        return false;
+    if (dibheadersize == DIB_BITMAPV4HEADER_SIZE) {
+        if(!write_bitmapv4header(w, h, imageByteSize, compression, bitcount, rmask, gmask, bmask, amask, out, err)) {
+            return false;
+        }
+    } else {    // DIB_BITMAPINFOHEADER_SIZE
+        if(!write_bitmapinfoheader(w, h, imageByteSize, compression, bitcount, out, err)) {
+            return false;
+        }
     }
+
     // TODO: write palette here
+
     if(!write_uncompressed(img, out, err)) {
         return false;
     }
