@@ -148,17 +148,19 @@ static bool write_colour_table(im_img* img, im_writer* out, ImErr* err)
     int i;
     if (palfmt==PALFMT_RGBA) {
         for (i=0; i<ncolours; ++i) {
-            dest[3] = *src++;
-            dest[2] = *src++;
-            dest[1] = *src++;
-            dest[0] = *src++;
+            *dest++ = src[2]; // b
+            *dest++ = src[1]; // g
+            *dest++ = src[0]; // r
+            *dest++ = src[3]; // a
+            src += 4;
         }
     } else if (palfmt==PALFMT_RGB) {
         for (i=0; i<ncolours; ++i) {
-            dest[3] = *src++;   //r
-            dest[2] = *src++;   //g
-            dest[1] = *src++;   //b
-            dest[0] = 0;
+            *dest++ = src[2]; // b
+            *dest++ = src[1]; // g
+            *dest++ = src[0]; // r
+            *dest++ = 0;    // x
+            src += 3;
         }
     } else {
         *err = ERR_UNSUPPORTED;
