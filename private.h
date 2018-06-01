@@ -37,6 +37,7 @@ extern struct handler handle_gif;
 extern struct handler handle_iff;
 extern struct handler handle_bmp;
 extern struct handler handle_pcx;
+extern struct handler handle_jpeg;
 
 
 // binary decode helpers
