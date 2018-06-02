@@ -11,6 +11,7 @@ A simple library for loading/saving images and animations, written in C.
 * PCX (load only, no support for 2 or 16-colour images yet)
 * BMP (load, save)
 * JPEG (load only)
+* Targa (load only)
 
 ## Installation
 
