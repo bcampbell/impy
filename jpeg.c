@@ -142,6 +142,8 @@ static im_img* read_jpeg_image( im_reader* rdr, ImErr* err )
     imreader_src* src = 0;
     im_img* image = 0;
 
+    *err = ERR_NONE;
+
     jpeg_create_decompress(&cinfo);
 
     src = init_im_reader_src(&cinfo, rdr);
