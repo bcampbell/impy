@@ -4,6 +4,7 @@
 //#include "jinclude.h"
 #include <jpeglib.h>
 #include <jerror.h>
+#include <setjmp.h>
 
 static bool is_jpeg(const uint8_t* buf, int nbytes);
 static bool match_jpeg_ext(const char* file_ext);
@@ -115,47 +116,78 @@ static imreader_src* init_im_reader_src( j_decompress_ptr cinfo, im_reader* rdr)
     return mgr;
 }
 
-// end custom reader
 // --------------------------------------------------------
+//  error handler
 
+typedef struct {
+    struct jpeg_error_mgr pub;
+    jmp_buf setjmp_buffer;
+} my_error_mgr;
+
+void my_error_exit(j_common_ptr cinfo)
+{
+  my_error_mgr* myerr = (my_error_mgr*)cinfo->err;
+  (*cinfo->err->output_message) (cinfo);
+  longjmp(myerr->setjmp_buffer, 1);
+}
+
+
+//------------------------------------------------------
+//
 
 static im_img* read_jpeg_image( im_reader* rdr, ImErr* err )
 {
     struct jpeg_decompress_struct cinfo;
-
-    struct jpeg_error_mgr errmgr;
+    my_error_mgr jerr;
+    imreader_src* src = 0;
+    im_img* image = 0;
 
     jpeg_create_decompress(&cinfo);
 
-    // TODO: proper error handling
-    cinfo.err = jpeg_std_error(&errmgr);
-    imreader_src* src = init_im_reader_src(&cinfo, rdr);
-//    FILE * infile = fopen("test.jpeg","rb");
-//    jpeg_stdio_src(&cinfo, infile);
+    src = init_im_reader_src(&cinfo, rdr);
+
+    /* We set up the normal JPEG error routines, then override error_exit. */
+    cinfo.err = jpeg_std_error(&jerr.pub);
+    jerr.pub.error_exit = my_error_exit;
+    if (setjmp(jerr.setjmp_buffer)) {
+
+        *err = ERR_EXTLIB;
+        goto cleanup;
+    }
 
     jpeg_read_header(&cinfo, TRUE);
     jpeg_start_decompress(&cinfo);
 
-
     int w = cinfo.output_width;
     int h = cinfo.output_height;
     int channels = cinfo.num_components;
-    // TODO!!!
-  //type = GL_RGB;
-  //if(channels == 4) type = GL_RGBA;
-    im_img* image = im_img_new( w, h, 1, FMT_RGB, DT_U8);
+    if( channels != 3) {
+        // TODO: do we need to support other values? If so, how?
+        *err = ERR_UNSUPPORTED;
+        goto cleanup;
+    }
+    image = im_img_new( w, h, 1, FMT_RGB, DT_U8);
 
-    // TODO: alloc a rowptr array and read all scanlines at once
-    int row=0;
-    while (cinfo.output_scanline < cinfo.output_height)
-    {
-        void* rowptr = im_img_row(image, row);
+    int y;
+    for (y=0; y<h; ++y) {
+        void* rowptr = im_img_row(image, y);
         jpeg_read_scanlines(&cinfo, (JSAMPARRAY)&rowptr, 1);
-        ++row;
     }
 
     jpeg_finish_decompress(&cinfo);   //finish decompressing
 
-    ifree(src);
+cleanup:
+    jpeg_destroy_decompress(&cinfo);
+    if (src) {
+        ifree(src);
+    }
+
+    if (*err != ERR_NONE) {
+        if (image) {
+            im_img_free(image);
+            image = 0;
+        }
+    }
+
     return image; 
 }
