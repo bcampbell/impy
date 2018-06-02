@@ -9,11 +9,12 @@ A simple library for loading/saving images and animations, written in C.
 * GIF (load, save, including animation)
 * IFF (ILBM, PBM, load only. ANIM5 anims only)
 * PCX (load only, no support for 2 or 16-colour images yet)
-* BMP (load only)
+* BMP (load, save)
+* JPEG (load only)
 
 ## Installation
 
-Requires cmake, libpng, zlib, giflib (v5+).
+Requires cmake, libpng, zlib, giflib (v5+), libjpeg.
 
 Generic unix steps:
 
