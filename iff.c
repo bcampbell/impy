@@ -980,14 +980,15 @@ static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data
             uint8_t* dest = im_img_row(img,y);
             int x;
             for( x=0; x<bmhd->w; ++x) {
-                uint8_t pix=0;
                 const uint8_t* src = f->image_data + (y*plane_pitch*bmhd->nPlanes) + x/8;
                 int srcbit = 7 - (x&7);
                 int destbit;
+                uint8_t pix=0;
                 for(destbit = 0; destbit<bmhd->nPlanes; ++destbit) {
-                    *dest |= (((*src) >> srcbit)&0x01)<<destbit;
+                    pix |= (((*src) >> srcbit)&0x01)<<destbit;
                     src += plane_pitch;
                 }
+                *dest = pix;
                 ++dest;
             }
         }

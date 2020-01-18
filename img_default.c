@@ -67,6 +67,8 @@ im_img* image_create(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
         return NULL;
     }
 
+    // memset(foo->pixel_data, 0xdd, foo->height * foo->pitch * foo->depth);
+
     foo->pal_num_colours = 0;
     foo->pal_fmt = PALFMT_RGB;
     foo->pal_data = 0;
