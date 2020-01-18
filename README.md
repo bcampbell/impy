@@ -27,6 +27,10 @@ Generic unix steps:
     $ make
     $ sudo make install
 
+for a debug build:
+
+    $ cmake -DCMAKE_BUILD_TYPE=Debug ..
+
 Rough edges:
 
 * requires a really really recent version of cmake to correctly detect giflib 5.
