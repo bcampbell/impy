@@ -20,12 +20,12 @@ License: GPL3
 
 ### Prerequisites
 
-Requires cmake, libpng, zlib, giflib (v5+), libjpeg.
+Requires meson, libpng, zlib, giflib (v5+), libjpeg.
 
 On Debian/Ubuntu:
 
 ```
-$ sudo apt install cmake libjpeg-dev libpng-dev libgif-dev
+$ sudo apt install meson libjpeg-dev libpng-dev libgif-dev
 ```
 
 ### Compile & Install
@@ -34,24 +34,17 @@ Generic unix steps:
 
     $ git clone https://github.com/bcampbell/impy.git
     $ cd impy
-    $ mkdir build
+    $ meson setup build
     $ cd build
-    $ cmake ..
-    $ make
-    $ sudo make install
+    $ meson compile
 
-for a debug build:
+To then install:
 
-    $ cmake -DCMAKE_BUILD_TYPE=Debug ..
+    $ meson install
 
-Rough edges:
+To specify a release build in the meson setup step:
 
-- Previous versions of cmake didn't correctly detect giflib 5, which impy
-  requires. If you have an older cmake you can fudge `CMakeLists.txt`,
-  changing the `5` in `find_package(GIF 5 REQUIRED)` to `4` instead
-  (You still need giflib 5 installed).
-- One of the examples, impyview, requires SDL2. No fancy cmake options yet, but you
-  can just comment out the `impyview` bits of `examples/CMakeLists.txt` to skip it.
+    $ meson setup --buildtype release build
 
 ## API
 
