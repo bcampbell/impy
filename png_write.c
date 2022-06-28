@@ -50,16 +50,16 @@ bool write_png_image(im_img* img, im_writer* out, ImErr* err)
         int bit_depth,color_type;
         int y;
         ImFmt img_fmt;
-        width = im_img_w(img);
-        height = im_img_h(img);
-        img_fmt = im_img_format(img);
+        width = img->w;
+        height = img->h;
+        img_fmt = img->format;
 
         if (!suss_color_type(img_fmt, &color_type)) {
             *err = ERR_UNSUPPORTED;
             goto bailout;
         }
 
-        if (!suss_bit_depth(im_img_datatype(img), &bit_depth)) {
+        if (!suss_bit_depth(img->datatype, &bit_depth)) {
             *err = ERR_UNSUPPORTED;
             goto bailout;
         }
@@ -162,11 +162,11 @@ static bool suss_bit_depth( ImDatatype dt, int *bit_depth)
 // return false if anything unsupported or otherwise odd
 static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_img *img)
 {
-    png_color rgb[256];
-    png_byte trans[256];
+    png_color rgb[256] = {0};
+    png_byte trans[256] = {0};
     int maxtrans = -1;
-    int num_colours = im_img_pal_num_colours(img);
-    ImPalFmt pal_fmt = im_img_pal_fmt(img);
+    int num_colours = img->pal_num_colours;
+    ImPalFmt pal_fmt = img->pal_fmt;
     int i;
 
     if (num_colours>256) {
@@ -174,14 +174,14 @@ static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_img 
     }
 
     if (pal_fmt == PALFMT_RGB) {
-        uint8_t *src = im_img_pal_data(img);
+        uint8_t *src = img->pal_data;
         for ( i=0; i<num_colours; ++i ) {
             rgb[i].red = *src++;
             rgb[i].green = *src++;
             rgb[i].blue = *src++;
         }
     } else if (pal_fmt == PALFMT_RGBA) {
-        uint8_t *src = im_img_pal_data(img);
+        uint8_t *src = img->pal_data;
         for ( i=0; i<num_colours; ++i ) {
             rgb[i].red = *src++;
             rgb[i].green = *src++;

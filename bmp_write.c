@@ -140,10 +140,10 @@ static bool write_bitmapv4header( int w, int h,
 static bool write_colour_table(im_img* img, im_writer* out, ImErr* err)
 {
     uint8_t buf[256*4];
-    int ncolours = im_img_pal_num_colours(img);
-    ImPalFmt palfmt = im_img_pal_fmt(img);
+    int ncolours = img->pal_num_colours;
+    ImPalFmt palfmt = img->pal_fmt;
 
-    const uint8_t *src = im_img_pal_data(img);
+    const uint8_t *src = img->pal_data;
     uint8_t *dest = buf;
     int i;
     if (palfmt==PALFMT_RGBA) {
@@ -182,21 +182,21 @@ static void copy_indexed_data( const uint8_t* src, uint8_t* dest, int w)
 static bool write_uncompressed(im_img* img, im_writer* out, ImErr* err)
 {
     int x,y;
-    int w = im_img_w(img);
-    int h = im_img_h(img);
+    int w = img->w;
+    int h = img->h;
     uint8_t* linebuf = NULL;
     size_t linesize;
-    ImFmt srcFmt = im_img_format(img);
+    ImFmt srcFmt = img->format;
     im_convert_fn cvt;
 
     switch(srcFmt) {
         case FMT_RGBA:
         case FMT_BGRA:
-            cvt = pick_convert_fn(srcFmt, im_img_datatype(img), FMT_BGRA, DT_U8);
+            cvt = pick_convert_fn(srcFmt, img->datatype, FMT_BGRA, DT_U8);
             break;
         case FMT_RGB:
         case FMT_BGR:
-            cvt = pick_convert_fn(srcFmt, im_img_datatype(img), FMT_BGR, DT_U8);
+            cvt = pick_convert_fn(srcFmt, img->datatype, FMT_BGR, DT_U8);
             break;
         case FMT_COLOUR_INDEX:
             cvt = copy_indexed_data;
@@ -238,8 +238,8 @@ static bool write_uncompressed(im_img* img, im_writer* out, ImErr* err)
 bool im_img_write_bmp(im_img* img, im_writer* out, ImErr* err)
 {
 
-    int w = im_img_w(img);
-    int h = im_img_h(img);
+    int w = img->w;
+    int h = img->h;
     int paletteColours = 0;
     size_t paletteByteSize = 0;
     size_t imageOffset;
@@ -249,10 +249,10 @@ bool im_img_write_bmp(im_img* img, im_writer* out, ImErr* err)
     int bitcount;
     int compression;
     uint32_t rmask, gmask, bmask, amask;
-    ImFmt img_fmt = im_img_format(img);
+    ImFmt img_fmt = img->format;
     size_t dibheadersize = DIB_BITMAPINFOHEADER_SIZE;
 
-    if (im_img_datatype(img) != DT_U8) {
+    if (img->datatype != DT_U8) {
         *err = ERR_UNSUPPORTED;
         return false;
     } 
@@ -277,7 +277,7 @@ bool im_img_write_bmp(im_img* img, im_writer* out, ImErr* err)
         case FMT_COLOUR_INDEX:
             compression=BI_RGB;
             bitcount=8;
-            paletteColours = im_img_pal_num_colours(img);
+            paletteColours = img->pal_num_colours;
             if (paletteColours>256) {
                 paletteColours = 256;
             }

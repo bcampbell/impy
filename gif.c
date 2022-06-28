@@ -319,7 +319,8 @@ static bool process_image( struct readstate* state, ImErr* err )
             return false;
         }
 
-        im_img_set_offset(img, (int)gif->Image.Left, (int)gif->Image.Top);
+        img->x_offset = (int)gif->Image.Left;
+        img->y_offset = (int)gif->Image.Top;
         // TODO: record disposal details here
     }
 
@@ -505,13 +506,13 @@ static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, 
     size_t rowbytes = w*im_img_bytesperpixel(src);
 
     assert(destx >=0 && desty >=0);
-    assert( w <= im_img_w(src) && w <= im_img_w(dest));
-    assert( h <= im_img_h(src) && h <= im_img_h(dest));
-    assert( destx+w <= im_img_w(dest));
-    assert( desty+h <= im_img_h(dest));
+    assert( w <= src->w && w <= dest->w);
+    assert( h <= src->h && h <= dest->h);
+    assert( destx+w <= dest->w);
+    assert( desty+h <= dest->h);
 
-    assert( im_img_format(src) == im_img_format(dest));
-    assert( im_img_datatype(src) == im_img_datatype(dest));
+    assert( src->format == dest->format);
+    assert( src->datatype == dest->datatype);
 
     for (y=0; y<h; ++y) {
         memcpy( im_img_pos(dest,destx,desty+y), im_img_pos(src, 0,y), rowbytes);
@@ -521,8 +522,8 @@ static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, 
 static void drawrect( im_img* img, int xo, int yo, int w, int h, uint8_t c)
 {
     assert( xo>=0 && yo>=0);
-    assert( xo+w <= im_img_w(img));
-    assert( yo+h <= im_img_h(img));
+    assert( xo+w <= img->w);
+    assert( yo+h <= img->h);
     int x,y;
 
     for (y=0; y<h; ++y) {
@@ -553,7 +554,7 @@ static ColorMapObject *palette_to_cm( im_img* img, int *trans )
     GifColorType* dest;
     const uint8_t* src;
     int i;
-    int num_colours = im_img_pal_num_colours(img);
+    int num_colours = img->pal_num_colours;
 
     // TODO:  GifMakeMapObject fails if colour count is not power-of-two.
     cm = GifMakeMapObject( num_colours, NULL );
@@ -561,10 +562,10 @@ static ColorMapObject *palette_to_cm( im_img* img, int *trans )
         return NULL;
     }
     
-    src = im_img_pal_data(img);
+    src = img->pal_data;
     dest = cm->Colors;
     *trans = -1;
-    switch (im_img_pal_fmt(img)) {
+    switch (img->pal_fmt) {
         case PALFMT_RGB:
             for (i=0; i<num_colours; ++i) {
                 dest->Red = *src++;
@@ -613,10 +614,10 @@ static bool calc_extents( im_bundle* b, int* min_x, int* min_y, int* max_x, int*
             return false;
         }
 
-        x = im_img_x_offset(img);
-        y = im_img_y_offset(img);
-        w = im_img_w(img);
-        h = im_img_h(img);
+        x = img->x_offset;
+        y = img->y_offset;
+        w = img->w;
+        h = img->h;
 
         if (x < *min_x) {
             *min_x = x;
@@ -772,11 +773,11 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_img*
         return false;
     }
 
-    width = im_img_w(img);
-    height = im_img_h(img);
+    width = img->w;
+    height = img->h;
 
     // sanity checking
-    if( im_img_format(img) != FMT_COLOUR_INDEX ) {
+    if( img->format != FMT_COLOUR_INDEX ) {
         *err = ERR_UNSUPPORTED;
         goto bailout;
     }
@@ -810,7 +811,7 @@ static bool write_frame( GifFileType* gif, im_bundle* bundle, int frame, im_img*
 
     if (GIF_OK != EGifPutImageDesc(
         gif,
-        im_img_x_offset(img), im_img_y_offset(img),
+        img->x_offset, img->y_offset,
         width, height,
         false,  // interlace
         frame_cm))

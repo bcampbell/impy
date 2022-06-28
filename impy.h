@@ -5,8 +5,6 @@
 extern "C" {
 #endif
 
-
-
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -58,46 +56,27 @@ typedef enum ImPalFmt {
 } ImPalFmt;
 
 
-// im_img details are private
-typedef struct im_img {} im_img;
+typedef struct im_img {
+    int w;
+    int h;
+    int d;
 
+    ImFmt format;     // FMT_*
+    ImDatatype datatype;     // DT_*
 
+    int pitch;  // bytes per line
+    void* pixel_data;
 
-// interface of an im_img implementation.
-// a default implementation provided, but you can plug in one to map
-// to your 'native' image representation
-// for example, you could provide an SDL_Surface wrapper, so any
-// im_img* could be simply cast to SDL_Surface* as needed.
-typedef struct im_img_impl {
+    // palette
+    int pal_num_colours;    // 0=no palette
+    ImPalFmt pal_fmt;
+    void* pal_data;     // can be NULL, iff num_colours==0
 
-    im_img* (*create)( int, int, int, ImFmt, ImDatatype );
-    void (*free)(im_img *img);
-
-    int (*width)(const im_img *);
-    int (*height)(const im_img *);
-    int (*depth)(const im_img *);
-    ImFmt (*format)(const im_img *);
-    ImDatatype (*datatype)(const im_img *);
-    void* (*pos)(const im_img *, int, int);
-    int (*pitch)(const im_img *);
-
-    // image palette fns
-    bool (*pal_set)(im_img* img, ImPalFmt fmt, int ncolours, const void* data);
-    void* (*pal_data)(const im_img* img);
-    int (*pal_num_colours)(const im_img* img);
-    ImPalFmt (*pal_fmt)(const im_img* img);
-
-    int (*x_offset)(const im_img*);
-    int (*y_offset)(const im_img*);
-    void (*set_offset)(im_img*, int, int);
-} im_img_impl;
-
-
-extern im_img_impl im_default_img_impl;
-extern im_img_impl *im_current_img_impl;
-
-
-
+    // metadata
+    int x_offset;
+    int y_offset;
+    // TODO: disposal, frame duration, etc...
+} im_img;
 
 
 /**********
@@ -246,12 +225,10 @@ static inline size_t im_write( im_writer* w, const void* data, size_t nbytes)
  **********************/
 
 // creates a new image (no palette, even if indexed)
-static inline im_img* im_img_new( int w, int h, int d, ImFmt fmt, ImDatatype datatype )
-    { return im_current_img_impl->create(w,h,d,fmt,datatype); }
+extern im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype);
 
 // Free an image (and its content and palette)
-static inline void im_img_free(im_img *img)
-    { im_current_img_impl->free(img); }
+extern void im_img_free(im_img *img);
 
 // Create a new copy of an existing image
 extern im_img* im_img_clone(const im_img* src_img);
@@ -275,57 +252,21 @@ extern im_img* im_img_read( im_reader* rdr, ImErr* err);
 // Helper to calculate the bytes per pixel required for a given format/datatype combination
 extern size_t im_bytesperpixel(ImFmt fmt, ImDatatype datatype);
 
-
-// Return image width
-static inline int im_img_w(const im_img *img)
-    { return im_current_img_impl->width(img); }
-
-// Return image height
-static inline int im_img_h(const im_img *img)
-    { return im_current_img_impl->height(img); }
-
-// Return image depth
-// (NOTE: mainly for future expansion, to support 3d texture formats)
-static inline int im_img_d(const im_img *img)
-    { return im_current_img_impl->depth(img); }
-
-// Fetch the format of the image
-static inline ImFmt im_img_format(const im_img *img)
-    { return im_current_img_impl->format(img); }
-
-// Return the data type of the image component data
-static inline ImDatatype im_img_datatype(const im_img *img)
-    { return im_current_img_impl->datatype(img); }
-
 // Fetch a pointer to a specific pixel
 static inline void* im_img_pos(const im_img *img, int x, int y)
-    { return im_current_img_impl->pos(img,x,y); }
-
-// Return the number of bytes between the start of one row and the next
-static inline int im_img_pitch(const im_img *img)
-    { return im_current_img_impl->pitch(img); }
+    { return ((uint8_t*)(img->pixel_data)) + (y*img->pitch) + (x*im_bytesperpixel(img->format, img->datatype)); }
 
 // Fetch a pointer to the start of a specific row
 static inline void* im_img_row(const im_img *img, int row)
     { return im_img_pos(img,0,row); }
 
-// Return bytes per pixel for this image
-static inline size_t im_img_bytesperpixel(const im_img* img) {
-    return im_bytesperpixel(im_img_format(img), im_img_datatype(img));
-}
+static inline size_t im_img_bytesperpixel(const im_img *img)
+    { return im_bytesperpixel(img->format, img->datatype); }
 
 // TODO: metadata access...
 // - animation frame delay
 // - frame disposal
 // - comments/datestamps/etc...
-
-// access to image offset
-static inline int im_img_x_offset(const im_img* img)
-    { return im_current_img_impl->x_offset(img); }
-static inline int im_img_y_offset(const im_img* img)
-    { return im_current_img_impl->y_offset(img); }
-static inline void im_img_set_offset(im_img* img, int x, int y)
-    { im_current_img_impl->set_offset(img,x,y); }
 
 
 // image palette fns
@@ -334,26 +275,13 @@ static inline void im_img_set_offset(im_img* img, int x, int y)
 // the colours it points to.
 // If data is NULL, the palette data will be zeroed.
 // ncolours==0 means no palette.
-static inline bool im_img_pal_set( im_img* img, ImPalFmt fmt, int ncolours, const void* data)
-    { return im_current_img_impl->pal_set( img, fmt, ncolours, data); }
+extern bool im_img_pal_set( im_img* img, ImPalFmt fmt, int ncolours, const void* data);
 
 // load colours into existing palette, converting format if necessary
 extern bool im_img_pal_write( im_img* img, int first_colour, int num_colours, ImPalFmt data_fmt, const void* data);
 
 // read colours out of palette, converting format if necessary
 extern bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImPalFmt dest_fmt, void* dest);
-
-// return the number of colours in the image palette (0=no palette)
-static inline int im_img_pal_num_colours(const im_img* img)
-    { return im_current_img_impl->pal_num_colours( img ); }
-
-// return the format of the image palette (result undefined if image has no palette)
-static inline ImPalFmt im_img_pal_fmt(const im_img* img)
-    { return im_current_img_impl->pal_fmt( img ); }
-
-// get access to raw palette colours (result undefined if ncolours==0)
-static inline void* im_img_pal_data(const im_img* img)
-    { return im_current_img_impl->pal_data( img ); }
 
 // returns true if images have identical palettes (same format,
 // number of colours and colour data)
@@ -429,8 +357,6 @@ extern im_img* im_bundle_get_frame(im_bundle* b, int n);
 // Detach an image from a bundle. Ownership of the image
 // is passed to the caller.
 // extern im_img* im_bundle_detach(im_bundle* b, SlotID id);
-
-
 
 
 #ifdef __cplusplus

@@ -246,7 +246,7 @@ static bool apply_palette(png_structp png_ptr, png_infop info_ptr, im_img* img) 
     switch (palfmt) {
         case PALFMT_RGB:
             {
-                uint8_t* colp = im_img_pal_data(img);
+                uint8_t* colp = img->pal_data;
                 for (i = 0; i < num_colours; ++i) {
                     *colp++ = colours[i].red;
                     *colp++ = colours[i].green;
@@ -256,7 +256,7 @@ static bool apply_palette(png_structp png_ptr, png_infop info_ptr, im_img* img) 
             break;
         case PALFMT_RGBA:
             {
-                uint8_t* colp = im_img_pal_data(img);
+                uint8_t* colp = img->pal_data;
                 for (i = 0; i < num_colours; ++i) {
                     *colp++ = colours[i].red;
                     *colp++ = colours[i].green;

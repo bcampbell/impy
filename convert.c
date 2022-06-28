@@ -48,19 +48,18 @@ static void cvt_u8ALPHA_u8ALPHA( const uint8_t* src, uint8_t* dest, int w );
 
 im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
 {
-    if (im_img_datatype(srcImg) != DT_U8 || destDatatype!=DT_U8) {
+    if (srcImg->datatype != DT_U8 || destDatatype != DT_U8) {
         // TODO - type conversions!
         // maybe just fmtconvert to same type, then use a second
         // pass to convert the type?
         return NULL;
     }
-    if(im_img_format(srcImg)!=FMT_COLOUR_INDEX && destFmt==FMT_COLOUR_INDEX) {
+    if(srcImg->format != FMT_COLOUR_INDEX && destFmt == FMT_COLOUR_INDEX) {
         // no unsolicited quantising, thankyouverymuch
         return NULL;
     }
 
-
-    switch (im_img_format(srcImg)) {
+    switch (srcImg->format) {
         case FMT_COLOUR_INDEX:
             return convert_indexed(srcImg, destFmt, destDatatype);
         case FMT_RGB:
@@ -95,16 +94,16 @@ static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype 
 
 
     // convert!
-    destImg = im_img_new(im_img_w(srcImg), im_img_h(srcImg), im_img_d(srcImg),  destFmt, destDatatype);
+    destImg = im_img_new(srcImg->w, srcImg->h, srcImg->d,  destFmt, destDatatype);
     if (destImg) {
         int d,y;
         const uint8_t* srcLine = im_img_row(srcImg,0);
         uint8_t* destLine = im_img_row(destImg,0);
-        for (d=0; d<im_img_d(srcImg); ++d) {
-            for (y=0; y<im_img_h(srcImg); ++y) {
-                fn( srcLine, destLine, im_img_w(srcImg), im_img_pal_data(srcImg), im_img_pal_fmt(srcImg));
-                destLine += im_img_pitch(destImg);
-                srcLine += im_img_pitch(srcImg);
+        for (d=0; d<srcImg->d; ++d) {
+            for (y=0; y<srcImg->h; ++y) {
+                fn( srcLine, destLine, srcImg->w, srcImg->pal_data, srcImg->pal_fmt);
+                destLine += destImg->pitch;
+                srcLine += srcImg->pitch;
             }
         }
     }
@@ -326,7 +325,7 @@ static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype d
 {
     im_img* destImg = NULL;
 
-    im_convert_fn fn = pick_convert_fn(im_img_format(srcImg), im_img_datatype(srcImg), destFmt, destDatatype);
+    im_convert_fn fn = pick_convert_fn(srcImg->format, srcImg->datatype, destFmt, destDatatype);
 
     if (fn==NULL) {
         return NULL;
@@ -334,16 +333,16 @@ static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype d
 
 
     // convert!
-    destImg = im_img_new(im_img_w(srcImg), im_img_h(srcImg), im_img_d(srcImg),  destFmt, destDatatype);
+    destImg = im_img_new(srcImg->w, srcImg->h, srcImg->d,  destFmt, destDatatype);
     if (destImg) {
         int d,y;
         const uint8_t* srcLine = im_img_row(srcImg,0);
         uint8_t* destLine = im_img_row(destImg,0);
-        for (d=0; d<im_img_d(srcImg); ++d) {
-            for (y=0; y<im_img_h(srcImg); ++y) {
-                fn( srcLine, destLine, im_img_w(srcImg));
-                destLine += im_img_pitch(destImg);
-                srcLine += im_img_pitch(srcImg);
+        for (d=0; d<srcImg->d; ++d) {
+            for (y=0; y<srcImg->h; ++y) {
+                fn( srcLine, destLine, srcImg->w);
+                destLine += destImg->pitch;
+                srcLine += srcImg->pitch;
             }
         }
     }

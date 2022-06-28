@@ -111,7 +111,7 @@ static SDL_Texture* to_texture(im_img* img)
     // bmp shares the pixel data (it doesn't take it's own copy)
     // little-endian assumption...
     surf = SDL_CreateRGBSurfaceFrom(im_img_row(img2,0),
-            im_img_w(img2), im_img_h(img2), 24, im_img_pitch(img2), 0x0000ff,0x00ff00,0xff0000,0);
+            img2->w, img2->h, 24, img2->pitch, 0x0000ff,0x00ff00,0xff0000,0);
     if (!surf) {
         im_img_free(img2);
         fprintf(stderr, "ERROR: %s\n", SDL_GetError() );

@@ -9,7 +9,6 @@ srcs = [
   'iff.c',
   'im.c',
   'img.c',
-  'img_default.c',
   'io.c',
   'jpeg.c',
   'pcx.c',

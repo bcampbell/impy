@@ -35,8 +35,7 @@ Generic unix steps:
     $ git clone https://github.com/bcampbell/impy.git
     $ cd impy
     $ meson setup build
-    $ cd build
-    $ meson compile
+    $ meson compile -C build
 
 To then install:
 

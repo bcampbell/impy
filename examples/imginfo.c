@@ -4,7 +4,7 @@
 
 int main( int argc, char* argv[])
 {
-im_bundle* bundle = NULL;
+    im_bundle* bundle = NULL;
     ImErr err;
     int n;
     if (argc<=1) {
@@ -23,8 +23,8 @@ im_bundle* bundle = NULL;
         if (!img) {
             printf("no image\n");
         } else {
-            int w = im_img_w(img);
-            int h = im_img_h(img);
+            int w = img->w;
+            int h = img->h;
             printf( "%dx%d\n", w,h );
         }
     }
