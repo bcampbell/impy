@@ -171,7 +171,6 @@ im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
 {
     im_img* foo;
     int bytesPerPixel;
-    int datsize;
 
     if( w<1 || h<1 || d<1 ) {
         return NULL;

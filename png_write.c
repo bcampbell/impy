@@ -1,4 +1,5 @@
 #include "impy.h"
+#include "private.h"
 #include <png.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -8,108 +9,257 @@ static void custom_write(png_structp png_ptr,
     png_bytep data, png_size_t length);
 static void custom_flush(png_structp png_ptr);
 static bool suss_color_type( ImFmt fmt, int* color_type );
-static bool suss_bit_depth( ImDatatype dt, int *bit_depth);
-static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_img *img);
+
+static void ipng_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt);
+static void ipng_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data);
+static void ipng_set_palette(im_writer* writer, ImPalFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
+static ImErr ipng_finish(im_writer* writer);
 
 
-bool write_png_image(im_img* img, im_writer* out, ImErr* err)
-{
+typedef struct ipng_writer {
+    // embedded im_writer
+    write_handler* handler;
+    ImErr err;
+    im_out* out;
+    // png-specific
+    enum {READY, HEADER, BODY} state;
     png_structp png_ptr;
     png_infop info_ptr;
+    ImFmt fmt;
+    int w;
+    int h;
+    int rows_written;
+    int num_frames;
+} ipng_writer;
 
-    png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,NULL,NULL);
-    if (!png_ptr) {
+static struct write_handler ipng_write_handler = {
+    IM_FILEFMT_PNG,
+    ipng_begin_img,
+    ipng_write_rows,
+    ipng_set_palette,
+    ipng_finish
+};
+
+im_writer* ipng_new_writer(im_out* out, ImErr* err)
+{
+    ipng_writer* wr = imalloc(sizeof(ipng_writer));
+    if (!wr) {
         *err = ERR_NOMEM;
-        return false;
+        return NULL;
     }
+    wr->handler = &ipng_write_handler;
+    wr->err = ERR_NONE;
+    wr->out = out;
 
-    info_ptr = png_create_info_struct(png_ptr);
-    if (!info_ptr)
-    {
-       png_destroy_write_struct(&png_ptr, NULL);
-       *err = ERR_NOMEM;
-       return false;
-    }
-
-
-    if (setjmp(png_jmpbuf(png_ptr)))
-    {
-       png_destroy_write_struct(&png_ptr, &info_ptr);
-       // TODO: check error in writer, else post extlib error
-       *err = ERR_EXTLIB;
-       return false;
-    }
-
-    png_set_write_fn(png_ptr,
-        (png_voidp)out, custom_write, custom_flush);
-
-      //voidp write_io_ptr = png_get_io_ptr(write_ptr);
-
-    {
-        png_uint_32 width,height;
-        int bit_depth,color_type;
-        int y;
-        ImFmt img_fmt;
-        width = img->w;
-        height = img->h;
-        img_fmt = img->format;
-
-        if (!suss_color_type(img_fmt, &color_type)) {
-            *err = ERR_UNSUPPORTED;
-            goto bailout;
-        }
-
-        if (!suss_bit_depth(img->datatype, &bit_depth)) {
-            *err = ERR_UNSUPPORTED;
-            goto bailout;
-        }
-
-
-        png_set_IHDR(png_ptr, info_ptr,
-            width, height,
-            bit_depth, color_type,
-            PNG_INTERLACE_NONE,
-            PNG_COMPRESSION_TYPE_DEFAULT,
-            PNG_FILTER_TYPE_DEFAULT);
-
-        if (img_fmt == FMT_COLOUR_INDEX)
-        {
-            if( !plonk_palette( png_ptr, info_ptr, img) ) {
-                *err = ERR_UNSUPPORTED;
-                goto bailout;
-            }
-        }
-
-
-        // TODO: set other chunks here? text etc...
-
-
-        // write out everything up to the image data
-        png_write_info(png_ptr, info_ptr);
-
-        // set up any transforms
-        if (img_fmt == FMT_BGR || img_fmt == FMT_BGRA) {
-            png_set_bgr(png_ptr);
-        }
-
-        // now write the image data
-        for(y=0; y<height; ++y) {
-            png_bytep row = im_img_row(img,y);
-            png_write_row(png_ptr, row);
-        }
-
-
-        png_write_end(png_ptr, info_ptr);
-    }
-    // success! clean up and exit
-    png_destroy_write_struct(&png_ptr, &info_ptr);
-    return true;
-
-bailout:
-    png_destroy_write_struct(&png_ptr, &info_ptr);
-    return false;
+    wr->state = READY;
+    wr->png_ptr = NULL;
+    wr->info_ptr = NULL;
+    wr->fmt = FMT_RGB;
+    wr->w = 0;
+    wr->h = 0;
+    wr->rows_written = 0;
+    wr->num_frames = 0;
+    *err = ERR_NONE;
+    return (im_writer*)wr;
 }
 
+static void ipng_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
+{
+    int color_type;
+
+    ipng_writer* wr = (ipng_writer*)writer;
+    if (wr->err != ERR_NONE) {
+        return;
+    }
+
+    // Ready for image?
+    if (wr->state != READY) {
+        wr->err = ERR_UNFINISHED_IMG;   // hmm...
+        return;
+    }
+
+    if (wr->num_frames>0) {
+        wr->err = ERR_ANIM_UNSUPPORTED;  // animation not supported.
+        return;
+    }
+
+    wr->png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,NULL,NULL);
+    if (!wr->png_ptr) {
+        wr->err = ERR_NOMEM;
+        return;
+    }
+
+    wr->info_ptr = png_create_info_struct(wr->png_ptr);
+    if (!wr->info_ptr)
+    {
+        wr->err = ERR_NOMEM;
+        return;
+    }
+
+    // TODO - does this cover other functions which call png_* routines?
+    if (setjmp(png_jmpbuf(wr->png_ptr)))
+    {
+       png_destroy_write_struct(&wr->png_ptr, &wr->info_ptr);
+       // TODO: check error in im_out?
+       wr->err = ERR_EXTLIB;
+       return;
+    }
+
+    png_set_write_fn(wr->png_ptr,
+        (png_voidp)wr->out, custom_write, custom_flush);
+
+    if (!suss_color_type(fmt, &color_type)) {
+        wr->err = ERR_UNSUPPORTED;  // unsupported fmt
+        return;
+    }
+
+    png_set_IHDR(wr->png_ptr, wr->info_ptr,
+        (png_uint_32)w,
+        (png_uint_32)h,
+        8,  //bit_depth
+        color_type,
+        PNG_INTERLACE_NONE,
+        PNG_COMPRESSION_TYPE_DEFAULT,
+        PNG_FILTER_TYPE_DEFAULT);
+
+    wr->w = w;
+    wr->h = h;
+    wr->fmt = fmt;
+    wr->state = HEADER;
+}
+
+
+static void ipng_set_palette(im_writer* writer, ImPalFmt pal_fmt, unsigned int num_colours, const uint8_t *colours)
+{
+    png_color rgb[256] = {0};
+    png_byte trans[256] = {0};
+    int maxtrans = -1;
+    int i;
+
+    ipng_writer* wr = (ipng_writer*)writer;
+    if (wr->err != ERR_NONE) {
+        return;
+    }
+    if (wr->state == READY) {
+        wr->err = ERR_NOT_IN_IMG;   // begin_img wasn't called first.
+        return;
+    }
+    if (wr->state == BODY) {
+        wr->err = ERR_UNFINISHED_IMG;   // should be writing rows.
+        return;
+    }
+
+    if (num_colours>256) {
+        wr->err = ERR_PALETTE_TOO_BIG;
+        return;
+    }
+
+    // TODO: check to see if we've already set palette?
+
+    if (pal_fmt == PALFMT_RGB) {
+        uint8_t const* src = colours;
+        for ( i=0; i<num_colours; ++i ) {
+            rgb[i].red = *src++;
+            rgb[i].green = *src++;
+            rgb[i].blue = *src++;
+        }
+    } else if (pal_fmt == PALFMT_RGBA) {
+        uint8_t const* src = colours;
+        for ( i=0; i<num_colours; ++i ) {
+            rgb[i].red = *src++;
+            rgb[i].green = *src++;
+            rgb[i].blue = *src++;
+            trans[i] = *src++;
+            if( trans[i]!=255) {
+                maxtrans=i;
+            }
+        }
+    } else {
+        wr->err = ERR_UNSUPPORTED;  // unknown palette fmt
+        return;
+    }
+
+    png_set_PLTE(wr->png_ptr, wr->info_ptr, rgb, num_colours);
+    if (maxtrans!=-1) {
+        png_set_tRNS(wr->png_ptr, wr->info_ptr, trans, maxtrans+1, NULL);
+    }
+}
+
+
+static void ipng_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data)
+{
+    ipng_writer* wr = (ipng_writer*)writer;
+    if (wr->err != ERR_NONE) {
+        return;
+    }
+    if (wr->state == READY) {
+        wr->err = ERR_NOT_IN_IMG;   // begin_img wasn't called first.
+        return;
+    }
+
+    if (wr->state == HEADER) {
+        // write out everything up to the image data
+        png_write_info(wr->png_ptr, wr->info_ptr);
+
+        // set up any transforms
+        if (wr->fmt == FMT_BGR || wr->fmt == FMT_BGRA) {
+            png_set_bgr(wr->png_ptr);
+        }
+
+        wr->state = BODY;
+        wr->rows_written = 0;
+    }
+
+    // Write the rows.
+    if (wr->rows_written + num_rows > wr->h) {
+        wr->err = ERR_TOO_MANY_ROWS;
+        return;
+    }
+
+    for (int i = 0; i < num_rows; ++i) {
+        png_write_row(wr->png_ptr, (png_const_bytep)data);
+        data += im_bytesperpixel(wr->fmt, DT_U8) * wr->w;
+        wr->rows_written++;
+    }
+
+    // Is that all the rows in the image?
+
+    // Finished the frame?
+    if (wr->rows_written >= wr->h) {
+        png_write_end(wr->png_ptr, wr->info_ptr);
+
+        wr->state = READY;
+        wr->num_frames++;
+    }
+}
+
+
+static ImErr ipng_finish(im_writer* writer)
+{
+    ImErr err;
+
+    ipng_writer* wr = (ipng_writer*)writer;
+    if (wr->state != READY) {
+        wr->err = ERR_UNFINISHED_IMG;   // expected some rows!
+    }
+
+    if( wr->png_ptr) {
+       png_destroy_write_struct(&wr->png_ptr, &wr->info_ptr);
+    }
+
+    if (wr->out) {
+        if (im_out_close(wr->out) < 0 ) {
+            if (wr->err == ERR_NONE) {
+                wr->err = ERR_FILE;
+            }
+        }
+        wr->out = NULL;
+    }
+
+    err = wr->err;
+    ifree(wr);
+    return err;
+}
 
 
 // calculate png colour type PNG_COLOR_whatever
@@ -137,75 +287,10 @@ static bool suss_color_type( ImFmt fmt, int* color_type )
     return true;
 }
 
-// calculate png bit depth (8 or 16)
-// return false if unsupported
-static bool suss_bit_depth( ImDatatype dt, int *bit_depth)
-{
-    switch (dt)
-    {
-        case DT_U8: *bit_depth=8; break;
-        case DT_U16: *bit_depth=16; break;
-        case DT_S8:
-        case DT_S16:
-        case DT_U32:
-        case DT_S32:
-        case DT_FLOAT16:
-        case DT_FLOAT32:
-        case DT_FLOAT64:
-        default:
-            return false;
-    }
-    return true;
-}
-
-
-// return false if anything unsupported or otherwise odd
-static bool plonk_palette(png_structp png_ptr, png_infop info_ptr, const im_img *img)
-{
-    png_color rgb[256] = {0};
-    png_byte trans[256] = {0};
-    int maxtrans = -1;
-    int num_colours = img->pal_num_colours;
-    ImPalFmt pal_fmt = img->pal_fmt;
-    int i;
-
-    if (num_colours>256) {
-        return false;
-    }
-
-    if (pal_fmt == PALFMT_RGB) {
-        uint8_t *src = img->pal_data;
-        for ( i=0; i<num_colours; ++i ) {
-            rgb[i].red = *src++;
-            rgb[i].green = *src++;
-            rgb[i].blue = *src++;
-        }
-    } else if (pal_fmt == PALFMT_RGBA) {
-        uint8_t *src = img->pal_data;
-        for ( i=0; i<num_colours; ++i ) {
-            rgb[i].red = *src++;
-            rgb[i].green = *src++;
-            rgb[i].blue = *src++;
-            trans[i] = *src++;
-            if( trans[i]!=255) {
-                maxtrans=i;
-            }
-        }
-    } else {
-        return false;
-    }
-
-    png_set_PLTE(png_ptr, info_ptr, rgb, num_colours);
-    if (maxtrans!=-1) {
-        png_set_tRNS(png_ptr, info_ptr, trans, maxtrans+1, NULL);
-    }
-    return true;
-}
-
 static void custom_write(png_structp png_ptr,
     png_bytep data, png_size_t length)
 {
-    im_writer* w = (im_writer*)png_get_io_ptr(png_ptr);
+    im_out* w = (im_out*)png_get_io_ptr(png_ptr);
     size_t n = im_write(w, data, length);
     if (n!=length) {
         png_error(png_ptr, "write error");

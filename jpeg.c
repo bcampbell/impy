@@ -6,12 +6,9 @@
 #include <jerror.h>
 #include <setjmp.h>
 
+#if 0
 static bool is_jpeg(const uint8_t* buf, int nbytes);
 static bool match_jpeg_ext(const char* file_ext);
-static im_img* read_jpeg_image( im_reader* rdr, ImErr* err );
-//static bool write_jpeg_image(im_img* img, im_writer* out, ImErr* err);
-
-struct handler handle_jpeg = {is_jpeg, read_jpeg_image, NULL, match_jpeg_ext, NULL, NULL};
 
 static bool is_jpeg(const uint8_t* buf, int nbytes)
 {
@@ -31,14 +28,14 @@ static bool match_jpeg_ext(const char* file_ext)
     }
     return (istricmp(file_ext,".jpeg")==0);
 }
-
+#endif
 
 // ---------------------------------------------
-// custom jpeg_source_mgr to read from im_reader
+// custom jpeg_source_mgr to read from im_in
 //
 typedef struct {
     struct jpeg_source_mgr pub;
-    im_reader* rdr;
+    im_in* rdr;
     uint8_t buf[4096];
     bool start_of_file;
 } imreader_src;
@@ -98,7 +95,7 @@ static void term_source(j_decompress_ptr cinfo)
 {
 }
 
-static imreader_src* init_im_reader_src( j_decompress_ptr cinfo, im_reader* rdr)
+static imreader_src* init_im_in_src( j_decompress_ptr cinfo, im_in* rdr)
 {
     imreader_src* mgr = imalloc(sizeof(imreader_src));
 
@@ -135,7 +132,7 @@ void my_error_exit(j_common_ptr cinfo)
 //------------------------------------------------------
 //
 
-static im_img* read_jpeg_image( im_reader* rdr, ImErr* err )
+im_img* iread_jpeg_image( im_in* rdr, ImErr* err )
 {
     struct jpeg_decompress_struct cinfo;
     my_error_mgr jerr;
@@ -146,7 +143,7 @@ static im_img* read_jpeg_image( im_reader* rdr, ImErr* err )
 
     jpeg_create_decompress(&cinfo);
 
-    src = init_im_reader_src(&cinfo, rdr);
+    src = init_im_in_src(&cinfo, rdr);
 
     /* We set up the normal JPEG error routines, then override error_exit. */
     cinfo.err = jpeg_std_error(&jerr.pub);

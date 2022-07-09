@@ -4,6 +4,9 @@
 #include <string.h>
 
 
+
+#if 0   // IFF disabled for now
+
 // Good collection of anims to test with at:
 // http://www.randelshofer.ch/animations/
 
@@ -179,16 +182,16 @@ static inline bool chkcc( const void* a, const void* b) {
 
 static bool is_iff(const uint8_t* buf, int nbytes);
 static bool match_iff_ext(const char* file_ext);
-static im_bundle* read_iff_bundle( im_reader* rdr, ImErr* err );
-static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
-static bool handle_BMHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
-static bool handle_CAMG( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
-static bool handle_CMAP( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
-static bool handle_BODY( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
-static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
-static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err);
+static im_bundle* read_iff_bundle( im_in* rdr, ImErr* err );
+static bool handle_FORM( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err);
+static bool handle_BMHD( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err);
+static bool handle_CAMG( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err);
+static bool handle_CMAP( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err);
+static bool handle_BODY( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err);
+static bool handle_ANHD( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err);
+static bool handle_DLTA( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err);
 
-static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes);
+static int decodeLine( im_in* rdr, uint8_t* dest, int nbytes);
 static bool decodeANIM5chunk(const uint8_t* src, size_t chunklen, uint8_t* dest,
         int ncols, int nplanes, int height);
 
@@ -197,12 +200,12 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err);
 
 static const char* indent( int n );
 #if 0
-int dump_chunk( int nest, im_reader *rdr );
+int dump_chunk( int nest, im_in *rdr );
 #endif
 
-struct handler handle_iff = {is_iff, NULL, read_iff_bundle, match_iff_ext, NULL, NULL};
+struct handler handle_iff = {is_iff, NULL, read_iff_bundle, match_iff_ext};
 
-static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err );
+static int parse_chunk( context* ctx, im_in* rdr, ImErr* err );
 
 
 static bool is_iff(const uint8_t* buf, int nbytes)
@@ -235,7 +238,7 @@ static bool match_iff_ext(const char* file_ext)
 }
 
 
-static bool handle_FORM( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err)
+static bool handle_FORM( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err)
 {
     char kind[4];
     context* child = NULL;
@@ -292,7 +295,7 @@ static frame* ctx_curframe(context *ctx) {
     }
 }
 
-static bool handle_BMHD(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *err )
+static bool handle_BMHD(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err )
 {
     BitMapHeader* bmhd;
     frame* f = ctx_curframe(ctx);
@@ -330,7 +333,7 @@ static bool handle_BMHD(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
     return true;
 }
 
-static bool handle_CAMG(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *err )
+static bool handle_CAMG(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err )
 {
     uint8_t buf[4];
     uint32_t mode;
@@ -353,7 +356,7 @@ static bool handle_CAMG(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
     return true;
 }
 
-static bool handle_CMAP(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *err )
+static bool handle_CMAP(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err )
 {
     uint8_t* data;
     frame* f = ctx_curframe(ctx);
@@ -391,7 +394,7 @@ static bool handle_CMAP(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
 
 
 // TODO: FIX! Not reading right num of bytes!
-static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *err )
+static bool handle_BODY(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err )
 {
     int consumed = 0;
     int words_per_line, bytes_per_line, data_size;
@@ -485,7 +488,7 @@ static bool handle_BODY(context* ctx, im_reader* rdr, uint32_t chunklen, ImErr *
 
 // decode a line of ILBM BODY compression
 // TODO: make this memory-based
-static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
+static int decodeLine( im_in* rdr, uint8_t* dest, int nbytes)
 {
     int consumed = 0;
     while (nbytes>0) {
@@ -532,7 +535,7 @@ static int decodeLine( im_reader* rdr, uint8_t* dest, int nbytes)
 
 
 
-static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err)
+static bool handle_ANHD( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err)
 {
     frame* f = ctx_curframe(ctx);
     AnimHeader* anhd;
@@ -577,7 +580,7 @@ static bool handle_ANHD( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr*
     return true;
 }
 
-static bool handle_DLTA( context* ctx, im_reader* rdr, uint32_t chunklen, ImErr* err)
+static bool handle_DLTA( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err)
 {
     frame* first;
     frame* cur;
@@ -784,7 +787,7 @@ static bool decodeANIM5chunk(const uint8_t* src, size_t srclen, uint8_t* dest,
 
 
 // process a single chunk and all it's children, returns num of bytes consumed (excluding any pad byte)
-static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
+static int parse_chunk( context* ctx, im_in* rdr, ImErr* err ) {
     uint8_t buf[8];
     uint32_t chunklen;
     bool success;
@@ -857,7 +860,7 @@ static int parse_chunk( context* ctx, im_reader* rdr, ImErr* err ) {
 }
 
 
-static im_bundle* read_iff_bundle( im_reader* rdr, ImErr* err )
+static im_bundle* read_iff_bundle( im_in* rdr, ImErr* err )
 {
     /*
     dump_chunk(0,rdr);
@@ -1034,8 +1037,10 @@ static const char* indent( int n ) {
     return buf + (MAXINDENT-n)*2;
 }
 
+
+
 #if 0
-int dump_chunk( int nest, im_reader *rdr )
+int dump_chunk( int nest, im_in *rdr )
 {
 
     uint8_t kind[4];
@@ -1093,3 +1098,5 @@ int dump_chunk( int nest, im_reader *rdr )
 #endif
 
 
+#endif // IFF disabled for now.
+ 

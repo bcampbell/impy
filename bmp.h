@@ -28,8 +28,6 @@
 
 bool im_is_bmp(const uint8_t* buf, int nbytes);
 bool im_ext_match_bmp(const char* file_ext);
-im_img* im_img_read_bmp( im_reader* rdr, ImErr* err );
-bool im_img_write_bmp(im_img* img, im_writer* out, ImErr* err);
 
 #endif // BMP_H_INCLUDED
 

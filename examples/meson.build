@@ -1,5 +1,9 @@
 inc = include_directories('..')
 
+executable('anim', 'anim.c',
+  include_directories : inc,
+  link_with : impylib,)
+
 executable('imginfo', 'imginfo.c',
   include_directories : inc,
   link_with : impylib,)

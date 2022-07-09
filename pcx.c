@@ -15,17 +15,6 @@
 // pcx code from gimp:
 // https://git.gnome.org/browse/gimp/tree/plug-ins/common/file-pcx.c
 
-static bool is_pcx(const uint8_t* buf, int nbytes);
-static bool match_pcx_ext(const char* file_ext);
-static im_img* read_pcx_image( im_reader* rdr, ImErr* err );
-static bool write_pcx_img(im_img* img, im_writer* out, ImErr* err);
-
-struct handler handle_pcx = {is_pcx, read_pcx_image, NULL, match_pcx_ext, NULL, NULL};
-
-
-
-
-//
 static bool is_pcx(const uint8_t* buf, int nbytes)
 {
     const uint8_t magic = buf[0], v=buf[1], enc=buf[2], bpp=buf[3];
@@ -45,12 +34,13 @@ static bool is_pcx(const uint8_t* buf, int nbytes)
     return true;
 }
 
+#if 0
 // returns true if filename extenstion is ".pcx" (case-insensitive)
 static bool match_pcx_ext(const char* file_ext)
 {
     return (istricmp(file_ext,".pcx")==0);
 }
-
+#endif
 
 typedef struct header {
     int version, enc, depth, w, h, xmin, xmax, ymin, ymax, planes, xdpi, ydpi;
@@ -59,11 +49,11 @@ typedef struct header {
     uint8_t *scanbuf;
 } header;
 
-static bool read_header( header* pcx, im_reader* rdr, ImErr *err);
-static void decode_scanline( header* pcx, im_reader* rdr);
+static bool read_header( header* pcx, im_in* rdr, ImErr *err);
+static void decode_scanline( header* pcx, im_in* rdr);
 
 
-static im_img* read_pcx_image( im_reader* rdr, ImErr* err )
+im_img* iread_pcx_image( im_in* rdr, ImErr* err )
 {
     im_img* img = NULL;
     header pcx = {0};
@@ -151,7 +141,7 @@ cleanup:
 
 
 
-static bool read_header( header* pcx, im_reader* rdr, ImErr *err)
+static bool read_header( header* pcx, im_in* rdr, ImErr *err)
 {
     uint8_t buf[128];
     uint8_t* p;
@@ -205,7 +195,7 @@ static bool read_header( header* pcx, im_reader* rdr, ImErr *err)
 
 // decode a line (can be multiple planes, as rle can span planes)
 // we're pretty tolerant of dodgy data.
-static void decode_scanline( header* pcx, im_reader* rdr)
+static void decode_scanline( header* pcx, im_in* rdr)
 {
     int outcnt = (pcx->bytesperline * pcx->planes);
     uint8_t val,reps;

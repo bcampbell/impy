@@ -25,14 +25,9 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-
+#if 0
 static bool is_targa(const uint8_t* buf, int nbytes);
 static bool match_targa_ext(const char* file_ext);
-static im_img* read_targa_image( im_reader* rdr, ImErr* err );
-//static bool write_targa_image(im_img* img, im_writer* out, ImErr* err);
-
-struct handler handle_targa = {is_targa, read_targa_image, NULL, match_targa_ext, NULL, NULL};
-
 
 // no magic cookie for targa...
 static bool is_targa(const uint8_t* buf, int nbytes)
@@ -44,7 +39,7 @@ static bool match_targa_ext(const char* file_ext)
 {
     return (istricmp(file_ext,".tga")==0);
 }
-
+#endif
 
 
 /*
@@ -98,24 +93,21 @@ enum tga_type {
 #define LE16(p) ((p)[0] + ((p)[1] << 8))
 #define SETLE16(p, v) ((p)[0] = (v), (p)[1] = (v) >> 8)
 
-/* Load a TGA type image from an im_reader */
-static im_img* read_targa_image( im_reader* rdr, ImErr* err )
+/* Load a TGA type image from an im_in */
+im_img* iread_targa_image( im_in* rdr, ImErr* err )
 {
-    const char *error = NULL;
     struct TGAheader hdr;
     int rle = 0;
     int alpha = 0;
     int indexed = 0;
     int grey = 0;
-    int ckey = -1;
     int ncols, w, h;
     im_img* img = 0;
-    uint32_t rmask, gmask, bmask, amask;
+    //uint32_t rmask, gmask, bmask, amask;
     uint8_t *dst;
     uint8_t *rowStart;
     int i;
     int bpp;
-    int lstep;
     uint32_t pixel;
     int count, rep;
     ImFmt fmt;
@@ -165,7 +157,7 @@ static im_img* read_targa_image( im_reader* rdr, ImErr* err )
     }
 
     bpp = (hdr.pixel_bits + 7) >> 3;
-    rmask = gmask = bmask = amask = 0;
+    //rmask = gmask = bmask = amask = 0;
     switch(hdr.pixel_bits) {
     case 8:
         if (!indexed) {

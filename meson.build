@@ -3,9 +3,10 @@ project('impy', 'c')
 srcs = [
   'bmp_read.c',
   'bmp_write.c',
-  'bundle.c',
   'convert.c',
-  'gif.c',
+  'generic_read.c',
+  'gif_read.c',
+  'gif_write.c',
   'iff.c',
   'im.c',
   'img.c',

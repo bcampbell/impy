@@ -4,32 +4,26 @@
 
 int main( int argc, char* argv[])
 {
-    im_bundle* bundle = NULL;
     ImErr err;
-    int n;
     if (argc<=1) {
         return 0;
     }
 
-    bundle = im_bundle_load(argv[1], &err);
-    if (bundle==NULL) {
-        fprintf(stderr,"load failed (err=%d)\n",err);
+    im_reader* rdr = im_reader_open_file(argv[1], &err);
+    if (!rdr) {
+        fprintf(stderr,"open failed (err=%d)\n",err);
         return 1;
     }
 
-    for (n=0; n<im_bundle_num_frames(bundle); ++n) {
-        im_img* img = im_bundle_get_frame(bundle,n);
-        printf("%d: ", n);
-        if (!img) {
-            printf("no image\n");
-        } else {
-            int w = img->w;
-            int h = img->h;
-            printf( "%dx%d\n", w,h );
-        }
+    im_imginfo img;
+    while (im_get_img(rdr, &img)) {
+        printf("%dx%d\n", img.w, img.h);
     }
 
-    im_bundle_free(bundle);
+    err = im_reader_finish(rdr);
+    if (err!= ERR_NONE) {
+        fprintf(stderr,"cleanup failed (err=%d)\n",err);
+    }
     return 0;
 }
 

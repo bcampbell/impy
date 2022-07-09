@@ -3,21 +3,21 @@
 #include <stdio.h>
 
 
-struct file_reader {
-    im_reader base;
+struct file_in {
+    im_in base;
     FILE* fp;
 };
 
-struct file_writer {
-    im_writer base;
+struct file_out {
+    im_out base;
     FILE* fp;
 };
 
 
 
-static size_t file_reader_read(im_reader* r, void* buf, size_t nbytes)
+static size_t file_in_read(im_in* r, void* buf, size_t nbytes)
 {
-    struct file_reader *frdr = (struct file_reader*)r;
+    struct file_in *frdr = (struct file_in*)r;
     int ret = fread(buf,1,nbytes,frdr->fp);
     if (ret<0) {
         // TODO: translate errno
@@ -27,9 +27,9 @@ static size_t file_reader_read(im_reader* r, void* buf, size_t nbytes)
 }
 
 
-static int file_reader_seek(im_reader* r, long pos, int whence)
+static int file_in_seek(im_in* r, long pos, int whence)
 {
-    struct file_reader *fr = (struct file_reader*)r;
+    struct file_in *fr = (struct file_in*)r;
     int w;
     int ret;
     switch(whence) {
@@ -48,31 +48,29 @@ static int file_reader_seek(im_reader* r, long pos, int whence)
     return ret;
 }
 
-static int file_reader_tell(im_reader* r)
+static int file_in_tell(im_in* r)
 {
-    struct file_reader *fr = (struct file_reader*)r;
-    int w;
-    int ret;
+    struct file_in *fr = (struct file_in*)r;
     return ftell(fr->fp);
 }
 
 
-static int file_reader_eof(im_reader* r)
+static int file_in_eof(im_in* r)
 {
-    struct file_reader *fr = (struct file_reader*)r;
+    struct file_in *fr = (struct file_in*)r;
     return feof(fr->fp);
 }
 
-static int file_reader_error(im_reader* r)
+static int file_in_error(im_in* r)
 {
-    struct file_reader *fr = (struct file_reader*)r;
+    struct file_in *fr = (struct file_in*)r;
     return ferror(fr->fp);
 }
 
 
-static int file_reader_close(im_reader* r)
+static int file_in_close(im_in* r)
 {
-    struct file_reader *fr = (struct file_reader*)r;
+    struct file_in *fr = (struct file_in*)r;
     if( fclose(fr->fp) == 0 ) {
         return 0;
     } else {
@@ -83,11 +81,11 @@ static int file_reader_close(im_reader* r)
 }
 
 
-im_reader* im_open_file_reader( const char* filename, ImErr* err)
+im_in* im_in_open_file(const char *filename, ImErr *err)
 {
-    struct file_reader *rdr = NULL;
+    struct file_in *rdr = NULL;
 
-    rdr = imalloc(sizeof(struct file_reader));
+    rdr = imalloc(sizeof(struct file_in));
     if (!rdr) {
         *err = ERR_NOMEM;
         return NULL;
@@ -100,25 +98,25 @@ im_reader* im_open_file_reader( const char* filename, ImErr* err)
         return NULL;
     }
 
-    rdr->base.read = file_reader_read;
-    rdr->base.seek = file_reader_seek;
-    rdr->base.tell = file_reader_tell;
-    rdr->base.eof = file_reader_eof;
-    rdr->base.error = file_reader_error;
-    rdr->base.close = file_reader_close;
-    return (im_reader*)rdr;
+    rdr->base.read = file_in_read;
+    rdr->base.seek = file_in_seek;
+    rdr->base.tell = file_in_tell;
+    rdr->base.eof = file_in_eof;
+    rdr->base.error = file_in_error;
+    rdr->base.close = file_in_close;
+    return (im_in*)rdr;
 }
 
-int im_close_reader(im_reader* rdr) {
-    int ret = rdr->close(rdr);
-    ifree(rdr);
+int im_in_close(im_in* in) {
+    int ret = in->close(in);
+    ifree(in);
     return ret;
 }
 
 
-static size_t file_writer_write(im_writer* w, const void* buf, size_t nbytes)
+static size_t file_out_write(im_out* w, const void* buf, size_t nbytes)
 {
-    struct file_writer *fw = (struct file_writer*)w;
+    struct file_out *fw = (struct file_out*)w;
     int ret = fwrite(buf,1,nbytes,fw->fp);
     if (ret<0) {
         //*err = ERR_FILE;    // TODO: translate errno
@@ -126,9 +124,9 @@ static size_t file_writer_write(im_writer* w, const void* buf, size_t nbytes)
     return ret;
 }
 
-static int file_writer_close(im_writer* w)
+static int file_out_close(im_out* w)
 {
-    struct file_writer *fw = (struct file_writer*)w;
+    struct file_out *fw = (struct file_out*)w;
     if( fclose(fw->fp) == 0 ) {
         return 0;
     } else {
@@ -136,11 +134,11 @@ static int file_writer_close(im_writer* w)
     }
 }
 
-im_writer* im_open_file_writer( const char* filename, ImErr *err)
+im_out* im_out_open_file(const char *filename, ImErr *err)
 {
-    struct file_writer *w = NULL;
+    struct file_out *w = NULL;
 
-    w = imalloc(sizeof(struct file_writer));
+    w = imalloc(sizeof(struct file_out));
     if (!w) {
         *err = ERR_NOMEM;
         return NULL;
@@ -153,14 +151,15 @@ im_writer* im_open_file_writer( const char* filename, ImErr *err)
         return NULL;
     }
 
-    w->base.write = file_writer_write;
-    w->base.close = file_writer_close;
-    return (im_writer*)w;
+    w->base.write = file_out_write;
+    w->base.close = file_out_close;
+    return (im_out*)w;
 }
 
-int im_close_writer(im_writer* w)
+int im_out_close(im_out* w)
 {
     int ret = w->close(w);
     ifree(w);
     return ret;
 }
+

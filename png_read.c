@@ -11,16 +11,6 @@ static void end_callback(png_structp png_ptr, png_infop info);
 static bool apply_palette(png_structp png_ptr, png_infop info, im_img* img);
 
 
-static bool is_png(const uint8_t* buf, int nbytes);
-static bool match_png_ext(const char* file_ext);
-static im_img* read_png_image(im_reader* rdr, ImErr *err);
-
-extern bool write_png_image(im_img* img, im_writer* out, ImErr *err);
-
-struct handler handle_png = {
-    is_png,read_png_image, NULL, match_png_ext, write_png_image, NULL
-};
-
 // struct to track stuff needed during png progressive reading
 struct cbdat {
     ImErr err;
@@ -28,6 +18,9 @@ struct cbdat {
     im_img* image;
 };
 
+#if 0
+static bool is_png(const uint8_t* buf, int nbytes);
+static bool match_png_ext(const char* file_ext);
 
 static bool match_png_ext(const char* file_ext)
 {
@@ -43,9 +36,9 @@ static bool is_png(const uint8_t* buf, int nbytes)
         return false;
     }
 }
+#endif
 
-
-static im_img* read_png_image(im_reader* rdr, ImErr *err)
+im_img* iread_png_image(im_in* rdr, ImErr *err)
 {
     struct cbdat cbDat = {ERR_NONE,0,NULL};
     png_structp png_ptr;
@@ -119,10 +112,9 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
 {
     struct cbdat* cbDat = (struct cbdat*)png_get_progressive_ptr(png_ptr);
 
-    im_img* img = NULL;
     png_uint_32 width, height;
     int bitDepth, colourType, interlaceType, compressionType, filterMethod;
-    int number_passes;
+    //int number_passes;
 
     png_get_IHDR(png_ptr, info_ptr, &width, &height,
         &bitDepth, &colourType, &interlaceType,

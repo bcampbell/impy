@@ -10,11 +10,14 @@ License: GPL3
 
 * PNG (load, save)
 * GIF (load, save, including animation)
-* IFF (ILBM, PBM, load only. ANIM5 anims only)
 * PCX (load only, no support for 2 or 16-colour images yet)
 * BMP (load, save)
 * JPEG (load only)
 * Targa (load only)
+
+### currently work-in-progress
+
+* IFF (ILBM, PBM, load only. ANIM5 anims only)
 
 ## Installation
 
@@ -48,30 +51,4 @@ To specify a release build in the meson setup step:
 ## API
 
 Not yet. `impy.h` is the public interface, but it's subject to massive change.
-
-## Example usage
-
-    // load an image, output dimensions
-
-    #include <stdio.h>
-    #include <impy.h>
-
-    int main(int argc, char* argv[])
-    {
-        if (argc<=1) {
-            return 0;
-        }
-
-        im_img* img = im_img_load( argv[1], &err);
-        if (!img) {
-            fprintf(stderr,"load failed (err=%d)\n",err);
-            return 1;
-        }
-
-        printf("%d x %d\n", im_img_w(img), im_img_h(img));
-
-        im_img_free(img);
-        return 0;
-    }
-
 
