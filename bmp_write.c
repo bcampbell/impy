@@ -10,42 +10,26 @@
 
 im_writer* ibmp_new_writer(im_out* out, ImErr *err);
 
-static void ibmp_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt);
-static void ibmp_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data);
-static void ibmp_set_palette(im_writer* writer, ImPalFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
-static ImErr ibmp_finish(im_writer* writer);
+static void ibmp_prep_img(im_writer* writer);
+static void ibmp_emit_header(im_writer* wr);
+static void ibmp_emit_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data);
+static void ibmp_finish(im_writer* wr);
 
 static struct write_handler bmp_write_handler = {
     IM_FILEFMT_BMP,
-    ibmp_begin_img,
-    ibmp_write_rows,
-    ibmp_set_palette,
+    ibmp_prep_img,
+    ibmp_emit_header,
+    ibmp_emit_rows,
+    NULL,   // post_img()
     ibmp_finish
 };
 
+// no bmp-specific fields.
 typedef struct ibmp_writer {
-    // embedded im_writer:
-    write_handler* handler;
-    ImErr err;
-    im_out* out;
-    // bmp-specifc
-    enum {READY, HEADER, BODY} state;
-    unsigned int num_frames;
-    unsigned int w;
-    unsigned int h;
-    ImFmt fmt;
-    size_t bytes_per_row;
-    uint8_t* rowbuf;
-    im_convert_fn row_cvt_fn;
-
-    unsigned int num_colours;
-    uint8_t* colours;
-
-    unsigned int rows_written;
-
+    im_writer writer;
 } ibmp_writer;
 
-static void flush_pre_imgdata(ibmp_writer* wr);
+
 static bool write_file_header(size_t fileSize, size_t imageOffset, im_out* out, ImErr* err);
 static bool write_bitmapinfoheader(int w, int h,
     size_t imageByteSize,
@@ -62,226 +46,56 @@ static bool write_bitmapv4header( int w, int h,
 
 im_writer* ibmp_new_writer(im_out* out, ImErr* err)
 {
-    ibmp_writer* writer = imalloc(sizeof(ibmp_writer));
-    if (!writer) {
+    ibmp_writer* bmpwriter = imalloc(sizeof(ibmp_writer));
+    if (!bmpwriter) {
         *err = ERR_NOMEM;
         return NULL;
     }
+    im_writer* writer = (im_writer*)bmpwriter;
+
+    i_writer_init(writer);
+
     writer->handler = &bmp_write_handler;
     writer->out = out;
-    writer->err = ERR_NONE;
-    writer->state = READY;
 
-    writer->fmt = FMT_RGB;
-    writer->num_colours = 0;
-    writer->colours = NULL;
-    writer->w = 0;
-    writer->h = 0;
-    writer->rows_written = 0;
-    writer->num_frames = 0;
-
-    writer->bytes_per_row = 0;
-    writer->rowbuf = NULL;
-    writer->row_cvt_fn = NULL;
     *err = ERR_NONE;
-    return (im_writer*)writer;
-}
-
-static void ibmp_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
-{
-    ibmp_writer* wr = (ibmp_writer*)writer;
-    if (wr->err != ERR_NONE) {
-        return;
-    }
-
-    // Ready for image?
-    if (wr->state != READY) {
-        wr->err = ERR_UNFINISHED_IMG;   // hmm...
-        return;
-    }
-
-    if (wr->num_frames>0) {
-        wr->err = ERR_ANIM_UNSUPPORTED;  // animation not supported.
-        return;
-    }
-
-    wr->w = w;
-    wr->h = h;
-    wr->fmt = fmt;
-    wr->bytes_per_row = im_bytesperpixel(fmt, DT_U8) * w;
-
-    switch(fmt) {
-        case FMT_RGBA:
-        case FMT_BGRA:
-            wr->row_cvt_fn = pick_convert_fn(fmt, DT_U8, FMT_BGRA, DT_U8);
-            break;
-        case FMT_RGB:
-        case FMT_BGR:
-            wr->row_cvt_fn = pick_convert_fn(fmt, DT_U8, FMT_BGR, DT_U8);
-            break;
-        case FMT_COLOUR_INDEX:
-            wr->row_cvt_fn = NULL;  // no conversion required.
-            break;
-        default:
-            wr->err = ERR_UNSUPPORTED;
-            return;
-    }
- 
-    if (wr->row_cvt_fn) {
-        // allocate a buffer for format-conversion
-        assert(wr->rowbuf == NULL); 
-        wr->rowbuf = imalloc(wr->bytes_per_row);
-        if (!wr->rowbuf) {
-            wr->err = ERR_NOMEM;
-            return;
-        }
-    }
-
-    wr->state = HEADER;
-}
-
-static void ibmp_set_palette(im_writer* writer, ImPalFmt pal_fmt, unsigned int num_colours, const uint8_t *colours)
-{
-    ibmp_writer* wr = (ibmp_writer*)writer;
-    if (wr->err != ERR_NONE) {
-        return;
-    }
-    if (wr->state == READY) {
-        wr->err = ERR_NOT_IN_IMG;   // begin_img wasn't called first.
-        return;
-    }
-    if (wr->state == BODY) {
-        wr->err = ERR_UNFINISHED_IMG;   // should be writing rows.
-        return;
-    }
-
-    if (num_colours>256) {
-        wr->err = ERR_PALETTE_TOO_BIG;
-        return;
-    }
-
-    if (wr->colours != NULL) {
-        ifree(wr->colours);
-    }
-    wr->colours = imalloc(num_colours*4);
-    wr->num_colours = num_colours;
-
-    // bmp expects BGRA palette entries.
-    const uint8_t *src = colours;
-    uint8_t *dest = wr->colours;
-    unsigned int i;
-    if (pal_fmt==PALFMT_RGBA) {
-        for (i=0; i<num_colours; ++i) {
-            dest[2] = *src++;
-            dest[1] = *src++;
-            dest[0] = *src++;
-            dest[3] = *src++;
-            dest += 4;
-        }
-    } else if (pal_fmt==PALFMT_RGB) {
-        for (i=0; i<num_colours; ++i) {
-            dest[2] = *src++;
-            dest[1] = *src++;
-            dest[0] = *src++;
-            dest[3] = 0;
-            dest += 4;
-        }
-    } else {
-        wr->err = ERR_UNSUPPORTED;
-        return;
-    }
+    return writer;
 }
 
 
 
-static void ibmp_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data)
+static void ibmp_emit_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data)
 {
-    ibmp_writer* wr = (ibmp_writer*)writer;
-    if (wr->err != ERR_NONE) {
+    size_t cnt = writer->internal_bytes_per_row * num_rows;
+    assert(writer->state == WRITESTATE_BODY);
+    if (im_write(writer->out, data, cnt) != cnt) 
+    {
+        writer->err = ERR_FILE;
         return;
-    }
-    if (wr->state == READY) {
-        wr->err = ERR_NOT_IN_IMG;   // begin_img wasn't called first.
-        return;
-    }
-
-    if (wr->state == HEADER) {
-        // write out everything up to the image data
-        flush_pre_imgdata(wr);
-        if (wr->err != ERR_NONE) {
-            return;
-        }
-        wr->state = BODY;
-        wr->rows_written = 0;
-    }
-
-    // Write the rows.
-    if (wr->rows_written + num_rows > wr->h) {
-        wr->err = ERR_TOO_MANY_ROWS;
-        return;
-    }
-
-    for (unsigned int i = 0; i < num_rows; ++i) {
-        uint8_t const* src = data;
-        if (wr->row_cvt_fn) {
-            // pixel conversion required
-            wr->row_cvt_fn(data, wr->rowbuf, wr->w);
-            src = wr->rowbuf;
-        }
-
-        if (im_write(wr->out, src, wr->bytes_per_row) != wr->bytes_per_row) {
-           wr->err = ERR_FILE;
-           return ;
-        }
-        data += wr->bytes_per_row;
-        wr->rows_written++;
-    }
-
-    // Is that all the rows in the image?
-
-    // Finished the frame?
-    if (wr->rows_written >= wr->h) {
-        wr->state = READY;
-        wr->num_frames++;
     }
 }
 
-static ImErr ibmp_finish(im_writer* writer)
+static void ibmp_finish(im_writer* writer)
 {
-    ImErr err;
+}
 
-    ibmp_writer* wr = (ibmp_writer*)writer;
-    if (wr->state != READY) {
-        wr->err = ERR_UNFINISHED_IMG;   // expected some rows!
+static void ibmp_prep_img(im_writer* writer)
+{
+    if (writer->num_frames > 0 ) {
+        writer->err = ERR_ANIM_UNSUPPORTED;
+        return;
     }
 
-    if (wr->colours) {
-        ifree(wr->colours);
-    }
-    if (wr->rowbuf) {
-        ifree(wr->rowbuf);
-    }
-
-    if (wr->out) {
-        if (im_out_close(wr->out) < 0 ) {
-            if (wr->err == ERR_NONE) {
-                wr->err = ERR_FILE;
-            }
-        }
-        wr->out = NULL;
-    }
-
-    err = wr->err;
-    ifree(wr);
-    return err;
+    // Set the palette format we want (im_set_palette will convert to this).
+    writer->pal_fmt = IM_FMT_BGRA;
 }
 
 // Write out everything up to the start of the row data itself.
-static void flush_pre_imgdata(ibmp_writer* wr)
+static void ibmp_emit_header(im_writer* wr)
 {
     unsigned int w = wr->w;
     unsigned int h = wr->h;
-    size_t paletteByteSize = wr->num_colours * 4;
+    size_t paletteByteSize = wr->pal_num_colours * 4;   // TODO!!!
     size_t imageOffset;
     size_t imageByteSize = h*wr->bytes_per_row;
     size_t fileSize;
@@ -291,14 +105,15 @@ static void flush_pre_imgdata(ibmp_writer* wr)
     uint32_t rmask, gmask, bmask, amask;
     size_t dibheadersize = DIB_BITMAPINFOHEADER_SIZE;
 
-    switch(wr->fmt) {
-        case FMT_RGB:
-        case FMT_BGR:
-            compression = BI_RGB;
-            bitcount = 24;
-            break;
-        case FMT_RGBA:
-        case FMT_BGRA:
+    // Figure out what format we're going to write out, and ask
+    // that im_write_rows() gives us that.
+    if (im_fmt_is_indexed(wr->fmt)) {
+        // paletted
+        compression = BI_RGB;
+        bitcount = 8;
+        i_writer_set_internal_fmt(wr, IM_FMT_INDEX8);
+    } else if(im_fmt_has_rgb(wr->fmt)) {
+        if (im_fmt_has_alpha(wr->fmt)) {
             // use v4 header for alpha support
             dibheadersize = DIB_BITMAPV4HEADER_SIZE;
             compression = BI_BITFIELDS;
@@ -307,16 +122,20 @@ static void flush_pre_imgdata(ibmp_writer* wr)
             bmask = 0x000000ff;
             amask = 0xff000000;
             bitcount = 32;
-            break;
-        case FMT_COLOUR_INDEX:
+            i_writer_set_internal_fmt(wr, IM_FMT_BGRA);
+        } else {
+            // no alpha channel
             compression = BI_RGB;
-            bitcount = 8;
-            break;
-        case FMT_ALPHA:
-        case FMT_LUMINANCE:
-        default:
-            wr->err = ERR_UNSUPPORTED;
-            return;
+            bitcount = 24;
+            i_writer_set_internal_fmt(wr, IM_FMT_BGR);
+        }
+    } else {
+        wr->err = ERR_UNSUPPORTED;
+        return;
+    }
+
+    if( wr->err != ERR_NONE) {
+        return;
     }
 
     imageOffset = BMP_FILE_HEADER_SIZE + dibheadersize + paletteByteSize;
@@ -327,12 +146,12 @@ static void flush_pre_imgdata(ibmp_writer* wr)
     }
 
     if (dibheadersize == DIB_BITMAPV4HEADER_SIZE) {
-        if(!write_bitmapv4header(w, h, imageByteSize, compression, bitcount, wr->num_colours, rmask, gmask, bmask, amask, wr->out, &err)) {
+        if(!write_bitmapv4header(w, h, imageByteSize, compression, bitcount, wr->pal_num_colours, rmask, gmask, bmask, amask, wr->out, &err)) {
             wr->err = err;
             return;
         }
     } else {    // DIB_BITMAPINFOHEADER_SIZE
-        if(!write_bitmapinfoheader(w, h, imageByteSize, compression, bitcount, wr->num_colours, wr->out, &err)) {
+        if(!write_bitmapinfoheader(w, h, imageByteSize, compression, bitcount, wr->pal_num_colours, wr->out, &err)) {
             wr->err = err;
             return;
         }
@@ -340,9 +159,14 @@ static void flush_pre_imgdata(ibmp_writer* wr)
 
     // If there's a palette, write it out.
     if (paletteByteSize > 0) {
-        if (im_write(wr->out, wr->colours, paletteByteSize) != paletteByteSize) {
+        uint8_t* buf = NULL;
+        // write palette as BGRA
+        assert(wr->pal_fmt == IM_FMT_BGRA);    // as we requested in prep_img
+        if (im_write(wr->out, wr->pal_data, paletteByteSize) != paletteByteSize) {
             wr->err = ERR_FILE;
-            return;
+        }
+        if (buf) {
+            ifree(buf);
         }
     }
 }

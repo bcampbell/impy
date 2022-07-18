@@ -153,9 +153,9 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
         ImFmt fmt;
         ImDatatype dt;
         switch (colourType) {
-            case PNG_COLOR_TYPE_RGB:        fmt = FMT_RGB; break;
-            case PNG_COLOR_TYPE_RGB_ALPHA:  fmt = FMT_RGBA; break;
-            case PNG_COLOR_TYPE_PALETTE:    fmt = FMT_COLOUR_INDEX; break;
+            case PNG_COLOR_TYPE_RGB:        fmt = IM_FMT_RGB; break;
+            case PNG_COLOR_TYPE_RGB_ALPHA:  fmt = IM_FMT_RGBA; break;
+            case PNG_COLOR_TYPE_PALETTE:    fmt = IM_FMT_INDEX8; break;
             // TODO:
             case PNG_COLOR_TYPE_GRAY:
             case PNG_COLOR_TYPE_GRAY_ALPHA:
@@ -208,7 +208,7 @@ static bool apply_palette(png_structp png_ptr, png_infop info_ptr, im_img* img) 
     int i;
     png_bytep trans = NULL;
     int  num_trans;
-    ImPalFmt palfmt;
+    ImFmt palfmt;
 
     if (png_get_PLTE(png_ptr, info_ptr, &colours, &num_colours) != PNG_INFO_PLTE) {
         // no PLTE chunk, so our work here is done
@@ -226,9 +226,9 @@ static bool apply_palette(png_structp png_ptr, png_infop info_ptr, im_img* img) 
 
     // alloc our palette
     if (num_trans>0) {
-        palfmt = PALFMT_RGBA;
+        palfmt = IM_FMT_RGBA;
     } else {
-        palfmt = PALFMT_RGB;
+        palfmt = IM_FMT_RGB;
     }
 
     if (!im_img_pal_set( img, palfmt, num_colours,NULL)) {
@@ -236,7 +236,7 @@ static bool apply_palette(png_structp png_ptr, png_infop info_ptr, im_img* img) 
     }
     //
     switch (palfmt) {
-        case PALFMT_RGB:
+        case IM_FMT_RGB:
             {
                 uint8_t* colp = img->pal_data;
                 for (i = 0; i < num_colours; ++i) {
@@ -246,7 +246,7 @@ static bool apply_palette(png_structp png_ptr, png_infop info_ptr, im_img* img) 
                 }
             }
             break;
-        case PALFMT_RGBA:
+        case IM_FMT_RGBA:
             {
                 uint8_t* colp = img->pal_data;
                 for (i = 0; i < num_colours; ++i) {
@@ -256,6 +256,8 @@ static bool apply_palette(png_structp png_ptr, png_infop info_ptr, im_img* img) 
                     *colp++ = (i<num_trans) ? trans[i] : 255;
                 }
             }
+            break;
+        default:
             break;
     }
 

@@ -3,14 +3,15 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 
 static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
-static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt );
-static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt );
-static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt );
-static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt );
-static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt );
+static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
+static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
+static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
+static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
+static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
 
 
 static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
@@ -78,7 +79,7 @@ static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype 
     im_img* destImg = NULL;
 
     // pick line-converter
-    void (*fn)( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt ) = NULL;
+    void (*fn)( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt ) = NULL;
     switch (destFmt) {
         case FMT_RGB: fn=cvt_u8INDEX_u8RGB; break;
         case FMT_RGBA: fn=cvt_u8INDEX_u8RGBA; break;
@@ -87,6 +88,7 @@ static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype 
         case FMT_COLOUR_INDEX: break;   // TODO: just pick closest colours?
         case FMT_ALPHA:  fn=cvt_u8INDEX_u8ALPHA; break;
         case FMT_LUMINANCE: break;  //TODO
+        default: break;
     }
     if (fn==NULL) {
         return NULL;
@@ -112,7 +114,7 @@ static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype 
 
 
 
-static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt)
+static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)pal_data;
@@ -136,11 +138,14 @@ static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const v
                 *dest++ = cols[idx+2];
             } 
             break;
+        default:
+            assert(false);
+            break;
     }
 }
 
 
-static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt)
+static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)pal_data;
@@ -166,11 +171,14 @@ static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const 
                 *dest++ = cols[idx+3];
             } 
             break;
+        default:
+            assert(false);
+            break;
     }
 }
 
 
-static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt)
+static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)pal_data;
@@ -193,11 +201,14 @@ static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const v
                 *dest++ = cols[idx+1];
                 *dest++ = cols[idx+0];
             } 
+            break;
+        default:
+            assert(false);
             break;
     } 
 }
 
-static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt)
+static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)pal_data;
@@ -223,10 +234,13 @@ static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const 
                 *dest++ = cols[idx+3];
             } 
             break;
+        default:
+            assert(false);
+            break;
     }
 }
 
-static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImPalFmt pal_fmt)
+static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
 {
     int x;
     const uint8_t* cols = (const uint8_t*)pal_data;
@@ -244,6 +258,9 @@ static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const
                 ++src;
                 *dest++ = cols[idx+3];
             } 
+            break;
+        default:
+            assert(false);
             break;
     }
 }
@@ -267,6 +284,7 @@ im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, Im
                 case FMT_COLOUR_INDEX: break;
                 case FMT_ALPHA:  fn=cvt_u8RGB_u8ALPHA; break;
                 case FMT_LUMINANCE: break;  //TODO
+                default: break;
             }
             break;
         case FMT_RGBA:
@@ -278,6 +296,7 @@ im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, Im
                 case FMT_COLOUR_INDEX: break;
                 case FMT_ALPHA:  fn=cvt_u8RGBA_u8ALPHA; break;
                 case FMT_LUMINANCE: break;  //TODO
+                default: break;
             }
             break;
         case FMT_BGR:
@@ -289,6 +308,7 @@ im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, Im
                 case FMT_COLOUR_INDEX: break;
                 case FMT_ALPHA:  fn=cvt_u8BGR_u8ALPHA; break;
                 case FMT_LUMINANCE: break;  //TODO
+                default: break;
             }
             break;
         case FMT_BGRA:
@@ -300,6 +320,7 @@ im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, Im
                 case FMT_COLOUR_INDEX: break;
                 case FMT_ALPHA:  fn=cvt_u8BGRA_u8ALPHA; break;
                 case FMT_LUMINANCE: break;  //TODO
+                default: break;
             }
             break;
         case FMT_ALPHA:
@@ -311,6 +332,7 @@ im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, Im
                 case FMT_COLOUR_INDEX: break;
                 case FMT_ALPHA:  fn=cvt_u8ALPHA_u8ALPHA; break;
                 case FMT_LUMINANCE: break;  //TODO
+                default: break;
             }
             break;
         default:

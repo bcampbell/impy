@@ -9,16 +9,78 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
-// image formats
+
 typedef enum ImFmt {
-    FMT_RGB=0,
-    FMT_RGBA,
-    FMT_BGR,
-    FMT_BGRA,
-    FMT_COLOUR_INDEX,
+    IM_FMT_NONE = 0,
+    IM_FMT_INDEX8,
+    IM_FMT_RGBA,
+    IM_FMT_RGBX,
+    IM_FMT_RGB,
+    IM_FMT_ARGB,
+    IM_FMT_XRGB,
+    IM_FMT_BGRA,
+    IM_FMT_BGRX,
+    IM_FMT_BGR,
+    IM_FMT_ABGR,
+    IM_FMT_XBGR,
     FMT_ALPHA,
     FMT_LUMINANCE
 } ImFmt;
+
+// phasing out:
+#define FMT_RGB  IM_FMT_RGB
+#define FMT_RGBA IM_FMT_RGBA
+#define FMT_BGR IM_FMT_BGR
+#define FMT_BGRA IM_FMT_BGRA
+#define FMT_COLOUR_INDEX IM_FMT_INDEX8
+//    FMT_ALPHA,
+//    FMT_LUMINANCE
+
+#define PALFMT_RGBA IM_FMT_RGBA
+#define PALFMT_RGB IM_FMT_RGB
+
+// TODO: bit encoding for pixelformats. Want to encode:
+// type: 0=rgb, 1=indexed, others... (2 bits)
+// alpha: 1 bit
+// rgb order: 0=rgb 1=bgr (1 bit)
+// bytesperpixel 0-16 (5 bits)
+// etc
+
+// Return true if fmt is intended to index into a palette.
+static inline bool im_fmt_is_indexed(ImFmt fmt)
+    {return fmt == IM_FMT_INDEX8; }
+
+// Return true if fmt has RGB components (in any order).
+static inline bool im_fmt_has_rgb(ImFmt fmt)
+{
+    return fmt != IM_FMT_INDEX8 &&
+        fmt != FMT_ALPHA &&
+        fmt != FMT_LUMINANCE;
+}
+
+// Return true if fmt has an alpha channel.
+static inline bool im_fmt_has_alpha(ImFmt fmt)
+{
+    return fmt == IM_FMT_RGBA ||
+        fmt == IM_FMT_BGRA ||
+        fmt == IM_FMT_ARGB ||
+        fmt == IM_FMT_ABGR ||
+        fmt == FMT_ALPHA;
+}
+
+static inline size_t im_fmt_bytesperpixel(ImFmt fmt)
+{
+    size_t s = 0;
+    if (im_fmt_is_indexed(fmt)) {
+        s += 1;
+    } else if (im_fmt_has_rgb(fmt)) {
+        s += 3;
+    }
+    if (im_fmt_has_alpha(fmt)) {
+        s += 1;
+    }
+    return s;
+}
 
 typedef enum ImFileFmt {
     IM_FILEFMT_UNKNOWN=0,
@@ -45,6 +107,7 @@ typedef enum ImDatatype {
     DT_FLOAT64
 } ImDatatype;
 
+
 // TODO: group into user-facing errors and coder errors
 typedef enum ImErr {
     ERR_NONE=0,
@@ -66,14 +129,9 @@ typedef enum ImErr {
     ERR_NOT_IN_IMG,     // not in begin_image() state
     ERR_TOO_MANY_ROWS,  // read or write too many rows
     ERR_UNFINISHED_IMG, // read or write incomplete image
-    ERR_NO_PALETTE,     // expected a set_palette() call.
+    ERR_NO_PALETTE,     // expected a set_palette() call, or tried to get a
+                        // non-existent palette.
 } ImErr;
-
-// palette format
-typedef enum ImPalFmt {
-    PALFMT_RGBA =0,
-    PALFMT_RGB
-} ImPalFmt;
 
 
 /**********
@@ -171,7 +229,7 @@ im_writer* im_writer_open_file(const char *filename, ImErr* err);
 im_writer* im_writer_new(ImFileFmt file_fmt, im_out* out, ImErr* err);
 
 void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt);
-void im_set_palette(im_writer* writer, ImPalFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
+void im_set_palette(im_writer* writer, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
 void im_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data);
 
 ImErr im_writer_finish(im_writer* writer);
@@ -189,7 +247,6 @@ typedef struct im_imginfo {
     int x_offset;
     int y_offset;
     unsigned int pal_num_colours;
-    ImPalFmt pal_fmt;
 } im_imginfo;
 
 typedef struct im_reader im_reader;
@@ -203,7 +260,9 @@ bool im_get_img(im_reader *reader, im_imginfo *info);
 ImErr im_reader_err(im_reader *reader);
 void im_read_rows(im_reader *reader, unsigned int num_rows, uint8_t *buf);
 
-void im_read_palette(im_reader *reader, uint8_t *buf);
+// Fetch the current palette. Assumes buf is big enough for info->pal_num_colours
+// in format pal_fmt.
+void im_read_palette(im_reader *reader, ImFmt pal_fmt, uint8_t *buf);
 
 ImErr im_reader_finish(im_reader *reader);
 

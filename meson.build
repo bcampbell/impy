@@ -9,6 +9,8 @@ srcs = [
   'gif_write.c',
   'iff.c',
   'im.c',
+  'im_read.c',
+  'im_write.c',
   'img.c',
   'io.c',
   'jpeg.c',

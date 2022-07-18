@@ -11,214 +11,144 @@
 
 
 typedef struct gif_writer {
-    // embedded im_writer
-    write_handler* handler;
-    ImErr err;
-    im_out* out;
+    im_writer base;
 
     // gif-specific stuff
-    enum {READY, HEADER, BODY} state;
     GifFileType *gif;
-    unsigned int num_frames;
     ColorMapObject* global_cm;
     int global_trans;
     // Details about current frame
-    int x_offset;
-    int y_offset;
-    unsigned int w;
-    unsigned int h;
-    unsigned int rows_written;
     ColorMapObject* local_cm;
     int local_trans;
 } gif_writer;
 
 
+static void pre_img(im_writer* wr);
+static void emit_header(im_writer* wr);
+static void emit_rows(im_writer* wr, unsigned int num_rows, const uint8_t* data);
+static void finish(im_writer* wr);
+
+
+static int calc_colour_res(int ncolours);
+static bool colormaps_equal(ColorMapObject const* a, ColorMapObject const* b);
+static ColorMapObject* cvt_palette(unsigned int num_colours, const uint8_t *src, int* trans);
 static ImErr translate_err(int gif_err_code);
 static int output_fn(GifFileType *gif, const GifByteType *buf, int size);
-static void emit_file_header(gif_writer* writer);
-static void emit_frame_header(gif_writer* writer);
-static int calc_colour_res(int ncolours);
+
 //static bool is_power_of_two(uint32_t n) { return (n & (n - 1)) == 0; } 
 
-static void gif_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt);
-static void gif_set_palette(im_writer* writer, ImPalFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
-static void gif_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t* data);
-static ImErr gif_finish(im_writer* writer);
 
 static struct write_handler gif_write_handler = {
     IM_FILEFMT_GIF,
-    gif_begin_img,
-    gif_write_rows,
-    gif_set_palette,
-    gif_finish
+    pre_img,
+    emit_header,
+    emit_rows,
+    NULL,   // post_img()
+    finish
 };
 
 im_writer* igif_new_writer(im_out* out, ImErr* err)
 {
-    int giferr;
-    gif_writer* wr = imalloc(sizeof(gif_writer));
-    if (!wr) {
+    gif_writer* gw = imalloc(sizeof(gif_writer));
+    if (!gw) {
         *err = ERR_NOMEM;
         return NULL;
     }
-    wr->handler = &gif_write_handler;
-    wr->out = out;
-    wr->err = ERR_NONE;
-    wr->state = READY;
-    wr->gif = NULL;
-    wr->num_frames = 0;
-    wr->global_cm = NULL;
-    wr->global_trans = -1;
+    i_writer_init(&gw->base);
 
-    wr->x_offset = 0;
-    wr->y_offset = 0;
-    wr->w = 0;
-    wr->h = 0;
-    wr->rows_written = 0;
-    wr->local_cm = NULL;
-    wr->local_trans = -1;
+    gw->base.handler = &gif_write_handler;
+    gw->base.out = out;
 
-    wr->gif = EGifOpen((void*)wr->out, output_fn, &giferr);
-    if (!wr->gif) {
-        ifree(wr);
-        *err = translate_err(giferr);
-        return NULL;
-    }
-
-    return (im_writer*)wr;
+    gw->gif = NULL;
+    gw->global_cm = NULL;
+    gw->global_trans = -1;
+    gw->local_cm = NULL;
+    gw->local_trans = -1;
+    return (im_writer*)gw;
 }
 
-static void gif_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
+// Optional hook, called at the last stage of im_begin_img(), but before
+// im_set_palette() et al...
+static void pre_img(im_writer* writer)
 {
-    gif_writer* wr = (gif_writer*)writer;
-    if (wr->err != ERR_NONE) {
+    // Only accept indexed data. We won't do quantisation on-the-fly, so this
+    // will fail if the user is planning to send us RGB or whatever.
+    i_writer_set_internal_fmt(writer, IM_FMT_INDEX8);
+    if (writer->err != ERR_NONE) {
         return;
     }
 
-    // Ready for new frame?
-    if (wr->state != READY) {
-        // The current image is unfinished
-        wr->err = ERR_UNFINISHED_IMG;
-        return;
-    }
-
-    if (fmt != FMT_COLOUR_INDEX) {
-        wr->err = ERR_UNSUPPORTED_FMT;
-        return;
-    }
-
-    wr->w = w;
-    wr->h = h;
-    wr->state = HEADER;
-    // now ready for rows, palette whatever
+    // Set the palette format we want (im_set_palette will convert to this).
+    // We want the alpha channel even if gif can't write it, because we
+    // use it to pick a transparent colour index (if any).
+    writer->pal_fmt = IM_FMT_RGBA;
 }
 
 
-
-static void gif_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t* data)
+// Write out everything up to the start of the row data itself.
+static void emit_header(im_writer* wr)
 {
-    gif_writer* wr = (gif_writer*)writer;
-    if (wr->err != ERR_NONE) {
-        return;
-    }
-    if (wr->state == READY) {
-        wr->err = ERR_NOT_IN_IMG;   // begin_img wasn't called first.
-        return;
-    }
+    gif_writer* gw = (gif_writer*)wr;
 
-    if (wr->state == HEADER) {
-        if (wr->num_frames == 0) {
-            emit_file_header(wr);
-            if (wr->err != ERR_NONE) {
-                return;
-            }
-        }
-
-        emit_frame_header(wr);
-        if (wr->err != ERR_NONE) {
+    // First frame?
+    if (wr->num_frames==0) {
+        int giferr;
+        assert(!gw->gif);
+        gw->gif = EGifOpen((void*)wr->out, output_fn, &giferr);
+        if (!gw->gif) {
+            wr->err = translate_err(giferr);
             return;
         }
 
-        wr->state = BODY;
-        wr->rows_written = 0;
-    }
-
-
-    // 
-    {
-        int i;
-        uint8_t const* src = data;
-        for (i = 0; i < num_rows; ++i) {
-            if (wr->rows_written >= wr->h) {
-                // Trying to write more rows than the image has!
-                wr->err = ERR_TOO_MANY_ROWS;
-                return;
-            }
-            if( GIF_OK !=EGifPutLine(wr->gif, (GifPixelType *)src, wr->w)) {
-                wr->err = translate_err(wr->gif->Error);
-                return;
-            }
-            wr->rows_written++;
-            src += wr->w;
+        // Set up the global colormap (and transparent index)
+        gw->global_cm = cvt_palette(wr->pal_num_colours, wr->pal_data, &gw->global_trans);
+        if( gw->global_cm == NULL) {
+            wr->err = ERR_NO_PALETTE;
+            return;
         }
-        // Finished the frame?
-        if (wr->rows_written >= wr->h) {
-            wr->state = READY;
-            wr->num_frames++;
+
+        // Emit preamble and screen description
+
+        // GIF89 - TODO: only if needed...
+        EGifSetGifVersion(gw->gif, true);
+
+        if (GIF_OK != EGifPutScreenDesc(gw->gif,
+            wr->w,  // TODO: option to specify screen size in advance?
+            wr->h,
+            calc_colour_res(gw->global_cm->ColorCount),
+            0,  // (bgcolor)
+            gw->global_cm))
+        {
+            // failed
+            wr->err = translate_err(gw->gif->Error);
+            return;
         }
     }
-}
 
+    // Now, write out the frame!
 
-static void emit_file_header(gif_writer* wr)
-{
-    // Check we've got all the frame details we need...
-    if( wr->global_cm == NULL) {
-        // No palette!
+    // Need to pick palette and transparent index
+    // TODO: seems like we're _always_ writing out a palette for each frame...
+    // probably don't have to do that...
+    ColorMapObject* cm = gw->global_cm;
+    int trans = gw->global_trans;
+
+    // update the local palette (TODO: a better way to see if palette has changed!)
+    if (gw->local_cm) {
+        GifFreeMapObject(gw->local_cm);
+    }
+    gw->local_cm = cvt_palette(wr->pal_num_colours, wr->pal_data, &gw->local_trans);
+    if( gw->local_cm == NULL) {
         wr->err = ERR_NO_PALETTE;
         return;
     }
 
-    // emit file header blocks
-
-    // GIF89 - TODO: only if needed...
-    EGifSetGifVersion(wr->gif, true);
-
-    if (GIF_OK != EGifPutScreenDesc(wr->gif,
-        wr->w,  // TODO: option to specify screen size in advance?
-        wr->h,
-        calc_colour_res(wr->global_cm->ColorCount),
-        0,  // (bgcolor)
-        wr->global_cm))
-    {
-        // failed
-        wr->err = translate_err(wr->gif->Error);
-        return;
-    }
-}
-
-// Return true if a and b hold the same colour values.
-static bool colormaps_equal(ColorMapObject const* a, ColorMapObject const* b) {
-    int n = a->ColorCount;
-    if (n != b->ColorCount) {
-        return false;
-    }
-    return (0 == memcmp(a->Colors, b->Colors, n * sizeof(GifColorType)));
-}
-
-
-static void emit_frame_header(gif_writer* wr)
-{
-    // Need to pick palette and transparent index
-    ColorMapObject* cm = wr->global_cm;
-    int trans = wr->global_trans;
-
     // If we've got a local palette and it's different to the global one,
     // use it instead.
-    if (wr->local_cm) {
-        if (!colormaps_equal(cm, wr->local_cm)) {
-            cm = wr->local_cm;
-            trans = wr->local_trans;
+    if (gw->local_cm) {
+        if (!colormaps_equal(cm, gw->local_cm)) {
+            cm = gw->local_cm;
+            trans = gw->local_trans;
         }
     }
 
@@ -233,23 +163,52 @@ static void emit_frame_header(gif_writer* wr)
 
         EGifGCBToExtension(&gcb, (GifByteType*)gcb_buf);
 
-        if( EGifPutExtension(wr->gif, GRAPHICS_EXT_FUNC_CODE, 4, gcb_buf) != GIF_OK) {
-            wr->err = translate_err(wr->gif->Error);
+        if( EGifPutExtension(gw->gif, GRAPHICS_EXT_FUNC_CODE, 4, gcb_buf) != GIF_OK) {
+            wr->err = translate_err(gw->gif->Error);
             return;
         }
     }
 
     if (GIF_OK != EGifPutImageDesc(
-        wr->gif,
+        gw->gif,
         wr->x_offset, wr->y_offset,
         wr->w, wr->h,
         false,  // interlace
-        cm))
+        cm))        // TODO: can this be null?
     {
-        wr->err = translate_err(wr->gif->Error);
+        wr->err = translate_err(gw->gif->Error);
         return;
     }
 }
+
+
+static void emit_rows(im_writer* wr, unsigned int num_rows, const uint8_t* data)
+{
+    gif_writer* gw = (gif_writer*)wr;
+    int i;
+    uint8_t const* src = data;
+
+    assert(wr->internal_fmt == IM_FMT_INDEX8);
+    for (i = 0; i < num_rows; ++i) {
+        if( GIF_OK !=EGifPutLine(gw->gif, (GifPixelType *)src, wr->w)) {
+            wr->err = translate_err(gw->gif->Error);
+            return;
+        }
+        src += wr->w;
+    }
+}
+
+
+// Return true if a and b hold the same colour values.
+static bool colormaps_equal(ColorMapObject const* a, ColorMapObject const* b)
+{
+    int n = a->ColorCount;
+    if (n != b->ColorCount) {
+        return false;
+    }
+    return (0 == memcmp(a->Colors, b->Colors, n * sizeof(GifColorType)));
+}
+
 
 
 
@@ -260,84 +219,36 @@ static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
 }
 
 
-// Set palette for the current frame.
-// If not called, assumes that the palette for the previous frame is in effect.
-static void gif_set_palette(im_writer* writer, ImPalFmt pal_fmt, unsigned int num_colours, const uint8_t *colours)
+
+// convert raw RGB to gif colormap
+static ColorMapObject* cvt_palette(unsigned int num_colours, const uint8_t *src, int* trans)
 {
     ColorMapObject* cm;
     GifColorType* dest;
-    const uint8_t* src;
-    int trans;
     int i;
 
-    gif_writer* wr = (gif_writer*)writer;
-    if (wr->err != ERR_NONE) {
-        return;
+    if (num_colours == 0) {
+        return NULL;
     }
-
-    if (wr->state == READY) {
-        wr->err = ERR_NOT_IN_IMG;   // begin_img wasn't called first.
-        return;
-    }
-
-    // TODO:  GifMakeMapObject fails if colour count is not power-of-two.
-    cm = GifMakeMapObject( num_colours, NULL );
+    cm = GifMakeMapObject(num_colours, NULL);
     if (!cm) {
-        wr->err = ERR_EXTLIB;
-        return;
+        return NULL;
     }
-    
-    src = colours;
-    dest = cm->Colors;
-    trans = -1;
-    switch (pal_fmt) {
-        case PALFMT_RGB:
-            for (i=0; i<num_colours; ++i) {
-                dest->Red = *src++;
-                dest->Green = *src++;
-                dest->Blue = *src++;
-                ++dest;
-            }
-            break;
-        case PALFMT_RGBA:
-            {
-                uint8_t alpha;
-                for (i=0; i<num_colours; ++i) {
-                    dest->Red = *src++;
-                    dest->Green = *src++;
-                    dest->Blue = *src++;
-                    ++dest;
-                    alpha = *src++;
-                    if (trans == -1 && alpha == 0) {
-                        trans = i;
-                    }
-                }
-            }
-            break;
-        default:
-            GifFreeMapObject(cm);
-            wr->err = ERR_UNSUPPORTED;  // unknown palette fmt
-            return;
-    }
+    *trans = -1;
 
-    if (wr->num_frames == 0) {
-        // First frame: set the global_cm.
-        if (wr->global_cm) {
-            GifFreeMapObject(wr->global_cm);
+    dest = cm->Colors;
+    for (i=0; i<num_colours; ++i) {
+        uint8_t alpha;
+        dest->Red = *src++;
+        dest->Green = *src++;
+        dest->Blue = *src++;
+        ++dest;
+        alpha = *src++;
+        if (*trans == -1 && alpha == 0) {
+            *trans = i;
         }
-        wr->global_cm = cm;
-        wr->global_trans = trans;
-    } else {
-        // Subsequent frames: set local_cm. The local_cm carries over to next
-        // frame, but we'll only output a local_cm for any given frame if
-        // it's different to the global_cm.
-        if (wr->local_cm) {
-            GifFreeMapObject(wr->local_cm);
-        }
-        wr->local_cm = cm;
-        wr->local_trans = trans;
     }
-    return; 
+    return cm;
 }
 
 static ImErr translate_err(int gif_err_code)
@@ -361,44 +272,31 @@ static int calc_colour_res(int ncolours)
     return 8;
 }
 
-ImErr gif_finish(im_writer* writer)
+static void finish(im_writer* wr)
 {
-    ImErr err;
+    gif_writer* gw = (gif_writer*)wr;
 
-    gif_writer* wr = (gif_writer*)writer;
-    if (wr->global_cm) {
-        GifFreeMapObject(wr->global_cm);
-        wr->global_cm = NULL;
+    if (gw->global_cm) {
+        GifFreeMapObject(gw->global_cm);
+        gw->global_cm = NULL;
     }
-    if (wr->local_cm) {
-        GifFreeMapObject(wr->local_cm);
-        wr->local_cm = NULL;
+    if (gw->local_cm) {
+        GifFreeMapObject(gw->local_cm);
+        gw->local_cm = NULL;
     }
 
-    //GifFreeMapObject(global_cm);
-    if (wr->gif) {
+    if (gw->gif) {
         int giferr;
-        if( GIF_OK != EGifCloseFile(wr->gif, &giferr) ) {
+        if( GIF_OK != EGifCloseFile(gw->gif, &giferr) ) {
             if (wr->err == ERR_NONE) {
                 wr->err = translate_err(giferr);
             }
         }
-        wr->gif = NULL;
+        gw->gif = NULL;
     }
-
-    if (wr->out) {
-        if (im_out_close(wr->out) < 0 ) {
-            if (wr->err == ERR_NONE) {
-                wr->err = ERR_FILE;
-            }
-        }
-        wr->out = NULL;
-    }
-
-    err = wr->err;
-    ifree(wr);
-    return err;
 }
+
+
 
 // TODO: support gif looping!
 #if 0

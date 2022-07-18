@@ -183,17 +183,13 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
             if (ncol>256) {
                 ncol=256;
             }
-            im_read_palette(rdr, buf);
+            im_read_palette(rdr, IM_FMT_RGBA, buf);
             uint8_t *p = buf;
             for (int i=0; i<ncol; ++i) {
                 tmp[i].r = *p++;
                 tmp[i].g = *p++;
                 tmp[i].b = *p++;
-                if( info.pal_fmt == PALFMT_RGBA) {
-                    tmp[i].a = *p++;
-                } else {
-                    tmp[i].a = 255;
-                }
+                tmp[i].a = *p++;
             }
             SDL_SetPaletteColors(surf->format->palette, tmp, 0, ncol);
         }
@@ -214,6 +210,7 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
         SDL_FreeSurface(surf);
     }
     err = im_reader_finish(rdr);
+    rdr = NULL;
 
     if (err!= ERR_NONE) {
         goto bailout;

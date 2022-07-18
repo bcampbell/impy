@@ -7,15 +7,15 @@
 #include <limits.h>
 #include <gif_lib.h>
 
-static ImErr gif_reader_finish(im_reader* reader);
-static bool gif_get_img(im_reader* reader, im_imginfo* info);
+static void gif_reader_finish(im_reader* reader);
+static bool gif_get_img(im_reader* reader);
 static void gif_read_rows(im_reader* reader, unsigned int num_rows, uint8_t* buf);
-static void gif_read_palette(im_reader* reader, uint8_t *buf);
+
+static void read_file_header(im_reader* rdr);
 
 static read_handler gif_read_handler = {
     gif_get_img,
     gif_read_rows,
-    gif_read_palette,
     gif_reader_finish
 };
 
@@ -35,17 +35,10 @@ struct rect {
 };
 
 typedef struct gif_reader {
-    // im_reader members
-    read_handler* handler;
-    ImErr err;
-    im_in* in;
+    im_reader base;
 
-    // gif-specific fields from here on
-    enum {READY, HEADER, BODY} state;
-    unsigned int rows_read;
-
+    // GIF-specific fields
     GifFileType *gif;
-
     // the currently-active gcb data, if any
     bool gcb_valid;
     GraphicsControlBlock gcb;
@@ -59,7 +52,6 @@ typedef struct gif_reader {
     // Coalesce means compose the frames are rendered as go.
     // Without coalesce, each frame will be returned exactly as it is stored
     // in the file (all different sizes/offsets etc).
-    int frame_num;
     bool coalesce;
     im_img* accumulator;    // the latest decoded frame
     im_img* backup; // backup of accumulator, used for DISPOSE_BACKGROUND frames
@@ -67,11 +59,11 @@ typedef struct gif_reader {
     int disposal;
 } gif_reader;
 
-static void process_image(gif_reader *rdr);
-static bool process_extension(gif_reader *rdr);
+static void process_image(im_reader *rdr);
+static bool process_extension(im_reader *rdr);
 static bool apply_palette(GifFileType* gif, im_img* img,  int transparent_idx);
 static bool decode(GifFileType* gif, im_img* destimg, int destx, int desty);
-static bool decode_trns( gif_reader *rdr, im_img* destimg, int destx, int desty, uint8_t trns );
+static bool decode_trns(im_reader *rdr, im_img* destimg, int destx, int desty, uint8_t trns );
 static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, int h);
 static void drawrect( im_img* img, int xo, int yo, int w, int h, uint8_t c);
 
@@ -84,116 +76,109 @@ static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 
 im_reader* im_new_gif_reader( im_in* in, ImErr* err )
 {
-    int giferr;
-    gif_reader* rdr = imalloc(sizeof(gif_reader));
-    if (!rdr) {
+    gif_reader* gr = imalloc(sizeof(gif_reader));
+    if (!gr) {
         *err = ERR_NOMEM;
         return NULL;
     }
 
-    // im_reader fields
-    rdr->handler = &gif_read_handler;
-    rdr->err = ERR_NONE;
-    rdr->in = in;
+    i_reader_init(&gr->base);
+    gr->base.handler = &gif_read_handler;
+    gr->base.in = in;
 
     // gif-specific fields
-    rdr->state = READY;
-    rdr->rows_read = 0;
-    rdr->gif = NULL;
-    rdr->gcb_valid = false;
-    rdr->linebuf = NULL;
-    rdr->frame_num = 0;
-    rdr->coalesce = true;
-    rdr->accumulator = NULL;
-    rdr->backup = NULL;
-    rdr->disposal = DISPOSAL_UNSPECIFIED;
+    gr->gif = NULL;
+    gr->gcb_valid = false;
+    gr->linebuf = NULL;
+    gr->coalesce = true;
+    gr->accumulator = NULL;
+    gr->backup = NULL;
+    gr->disposal = DISPOSAL_UNSPECIFIED;
 
-    rdr->gif = DGifOpen( (void*)rdr->in, input_fn, &giferr);
-    if (!rdr->gif) {
-        *err = translate_err(giferr);
-        goto bailout;
-    }
-    // we need a buffer big enough to decode a line
-    rdr->linebuf = imalloc((size_t)rdr->gif->SWidth);
-    if (!rdr->linebuf) {
-        *err = ERR_NOMEM;
-        goto bailout;
-    }
-
-    // if we're coalescing, then use an accumulator image big enough for the entire canvas
-    if (rdr->coalesce) {
-        int w = (int)rdr->gif->SWidth;
-        int h = (int)rdr->gif->SHeight;
-        rdr->accumulator = im_img_new(w, h, 1, FMT_COLOUR_INDEX, DT_U8);
-        if (!rdr->accumulator) {
-            *err = ERR_NOMEM;
-            goto bailout;
-        }
-        rdr->disposal = DISPOSAL_UNSPECIFIED;
-        // clear it to the background colour
-        drawrect(rdr->accumulator, 0, 0, w, h, (uint8_t)rdr->gif->SBackGroundColor);
-    }
-
-    return (im_reader*)rdr;
-bailout:
-    // err already set.
-    gif_reader_finish((im_reader*)rdr);
-    return NULL;
+    return (im_reader*)gr;
 }
 
 
-static ImErr gif_reader_finish(im_reader* reader)
+static void read_file_header(im_reader* rdr)
 {
-    ImErr err;
-    gif_reader* rdr = (gif_reader*)reader;
+    gif_reader* gr = (gif_reader*)rdr;
+    int giferr;
 
-    if (rdr->backup) {
-        im_img_free(rdr->backup);
+    assert(gr->gif == NULL);
+    assert(rdr->frame_num == 0);
+
+    gr->gif = DGifOpen( (void*)rdr->in, input_fn, &giferr);
+    if (!gr->gif) {
+        rdr->err = translate_err(giferr);
+        return;
     }
-    if (rdr->accumulator) {
-        im_img_free(rdr->accumulator);
+
+    // we need a buffer big enough to decode a line
+    gr->linebuf = imalloc((size_t)gr->gif->SWidth);
+    if (!gr->linebuf) {
+        rdr->err = ERR_NOMEM;
+        return;
     }
-    if (rdr->linebuf) {
-        ifree(rdr->linebuf);
+
+    // if we're coalescing, then use an accumulator image big enough for the entire canvas
+    if (gr->coalesce) {
+        int w = (int)gr->gif->SWidth;
+        int h = (int)gr->gif->SHeight;
+        gr->accumulator = im_img_new(w, h, 1, FMT_COLOUR_INDEX, DT_U8);
+        if (!gr->accumulator) {
+            rdr->err = ERR_NOMEM;
+            return;
+        }
+        gr->disposal = DISPOSAL_UNSPECIFIED;
+        // clear it to the background colour
+        drawrect(gr->accumulator, 0, 0, w, h, (uint8_t)gr->gif->SBackGroundColor);
     }
-    if (rdr->gif) {
+}
+
+
+static void gif_reader_finish(im_reader* rdr)
+{
+    gif_reader* gr = (gif_reader*)rdr;
+
+    if (gr->backup) {
+        im_img_free(gr->backup);
+        gr->backup = NULL;
+    }
+    if (gr->accumulator) {
+        im_img_free(gr->accumulator);
+        gr->accumulator = NULL;
+    }
+    if (gr->linebuf) {
+        ifree(gr->linebuf);
+        gr->linebuf = NULL;
+    }
+    if (gr->gif) {
         int giferr;
-        if(DGifCloseFile(rdr->gif, &giferr)!=GIF_OK) {
+        if(DGifCloseFile(gr->gif, &giferr)!=GIF_OK) {
             if (rdr->err == ERR_NONE) {
                 rdr->err = translate_err(giferr);
             }
         }
+        gr->gif = NULL;
     }
-
-    if (rdr->in) {
-        if (im_in_close(rdr->in) < 0) {
-            if (rdr->err != ERR_NONE) {
-                rdr->err = ERR_FILE;
-            }
-        }
-    }
-
-    err = rdr->err;
-    ifree(rdr);
-    return err;
 }
 
 // Returns true if a new image is successfully prepped for reading.
-static bool gif_get_img(im_reader* reader, im_imginfo* info)
+static bool gif_get_img(im_reader* rdr)
 {
-    gif_reader* rdr = (gif_reader*)reader;
+    gif_reader* gr = (gif_reader*)rdr;
 
-    if (rdr->err != ERR_NONE) {
-        return false;
-    }
-    if (rdr->state != READY) {
-        rdr->err = ERR_BAD_STATE;
-        return false;
+    if (rdr->frame_num == 0) {
+        // First frame, so open the file and get the file header et al.
+        read_file_header(rdr);
+        if (rdr->err != ERR_NONE) {
+            return false;
+        }
     }
 
     while(true) {
         GifRecordType rec_type;
-        if (DGifGetRecordType(rdr->gif, &rec_type) != GIF_OK) {
+        if (DGifGetRecordType(gr->gif, &rec_type) != GIF_OK) {
             rdr->err = ERR_MALFORMED;
             return false;
         }
@@ -209,16 +194,31 @@ static bool gif_get_img(im_reader* reader, im_imginfo* info)
                     return false;
                 }
                 {
-                    im_img* acc = rdr->accumulator;
-                    info->w = acc->w;
-                    info->h = acc->h;
-                    info->x_offset = acc->x_offset;
-                    info->y_offset = acc->y_offset;
-                    info->fmt = acc->format;
-                    info->pal_num_colours = acc->pal_num_colours;
-                    info->pal_fmt = acc->pal_fmt;
+                    // Populate curr from the accumulator image.
+                    im_img* img = gr->accumulator;
+                    im_imginfo* info = &rdr->curr;
+                    info->w = img->w;
+                    info->h = img->h;
+                    info->x_offset = img->x_offset;
+                    info->y_offset = img->y_offset;
+                    info->fmt = img->format;
+                    info->pal_num_colours = img->pal_num_colours;
+
+                    if (img->pal_num_colours>0) {
+                        // Copy out palette, in RGBA format.
+                        rdr->pal_data = irealloc(rdr->pal_data, img->pal_num_colours * im_fmt_bytesperpixel(IM_FMT_RGBA));
+                        if (!rdr->pal_data) {
+                            rdr->err = ERR_NOMEM;
+                            return false;
+                        }
+                        im_convert_fn cvt_fn = pick_convert_fn(img->pal_fmt, DT_U8, IM_FMT_RGBA, DT_U8);
+                        if (!cvt_fn) {
+                            rdr->err = ERR_NOCONV;
+                            return false;
+                        }
+                        cvt_fn(img->pal_data, rdr->pal_data, img->pal_num_colours);
+                    }
                 }
-                rdr->state = HEADER;
                 return true;    // got an image.
             case EXTENSION_RECORD_TYPE:
                 // TODO: set error code!
@@ -235,79 +235,33 @@ static bool gif_get_img(im_reader* reader, im_imginfo* info)
     }
 }
 
-static void gif_read_rows(im_reader* reader, unsigned int num_rows, uint8_t* buf)
+static void gif_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf)
 {
-    gif_reader* rdr = (gif_reader*)reader;
+    gif_reader* gr = (gif_reader*)rdr;
+    // Read rows out from the accumulator image.
+    im_img* img = gr->accumulator;
+    size_t bytes_per_row;
 
-    if (rdr->err != ERR_NONE) {
-        return;
-    }
-    if (rdr->state == READY) {
-        rdr->err = ERR_BAD_STATE;
-        return;
-    }
+    assert(rdr->state == READSTATE_BODY);
+    assert(img);
 
-    if (rdr->state == HEADER) {
-        // start reading.
-        rdr->state = BODY;
-        rdr->rows_read = 0;
-    }
-
-    assert(rdr->state == BODY);
-    {
-        size_t bytes_per_row;
-        im_img* img = rdr->accumulator;
-        assert(img);
-
-        bytes_per_row = im_img_bytesperpixel(img) * img->w;
-        if (rdr->rows_read + num_rows > img->h) {
-            rdr->err = ERR_TOO_MANY_ROWS;
-            return;
-        }
-        for (unsigned int row = 0; row < num_rows; ++row) {
-            unsigned int y = rdr->rows_read + row;
-            memcpy(buf, im_img_row(img, y), bytes_per_row);
-            buf += bytes_per_row;
-        }
-        rdr->rows_read += num_rows;
-
-        // Read them all?
-        if (rdr->rows_read == img->h) {
-            rdr->state = READY;
-        }
-    }
-}
-
-static void gif_read_palette(im_reader* reader, uint8_t *buf)
-{
-    gif_reader* rdr = (gif_reader*)reader;
-    if (rdr->err != ERR_NONE) {
-        return;
-    }
-    if (rdr->state != HEADER) {
-        rdr->err = ERR_BAD_STATE;
-        return;
-    }
-
-    {
-        im_img *acc = rdr->accumulator;
-        assert(acc);
-
-        if (acc->pal_num_colours > 0) {
-            size_t s = (acc->pal_fmt == PALFMT_RGBA) ? 4 : 3;
-            memcpy(buf, acc->pal_data, acc->pal_num_colours * s);
-        }
+    bytes_per_row = im_fmt_bytesperpixel(img->format) * img->w;
+    for (unsigned int row = 0; row < num_rows; ++row) {
+        unsigned int y = rdr->rows_read + row;
+        memcpy(buf, im_img_row(img, y), bytes_per_row);
+        buf += bytes_per_row;
     }
 }
 
 // fetches the next frame into the accumulator img.
 // Upon error sets the err field.
-static void process_image(gif_reader* rdr)
+static void process_image(im_reader* rdr)
 {
-    GifFileType* gif = rdr->gif;
+    gif_reader* gr = (gif_reader*)rdr;
+    GifFileType* gif = gr->gif;
     int trns = NO_TRANSPARENT_COLOR;
-    if (rdr->gcb_valid) {
-        trns = rdr->gcb.TransparentColor;
+    if (gr->gcb_valid) {
+        trns = gr->gcb.TransparentColor;
     }
 
     if (DGifGetImageDesc(gif) != GIF_OK) {
@@ -315,40 +269,40 @@ static void process_image(gif_reader* rdr)
         return;
     }
 
-    if (rdr->coalesce) {
+    if (gr->coalesce) {
         // We're combining frames into the accumulator image as we go along.
         int disposal = DISPOSAL_UNSPECIFIED;
-        if (rdr->gcb_valid) {
-            disposal = rdr->gcb.DisposalMode;
+        if (gr->gcb_valid) {
+            disposal = gr->gcb.DisposalMode;
         }
 
 
         // apply frame disposal...
         if (rdr->frame_num > 0 ) {
-            switch (rdr->disposal) {
+            switch (gr->disposal) {
                 case DISPOSAL_UNSPECIFIED:
                 case DISPOSE_DO_NOT:
                     break;
                 case DISPOSE_BACKGROUND:
                     {
-                        struct rect *r = &rdr->disposalrect;
-                        drawrect( rdr->accumulator,r->x, r->y, r->w, r->h, (uint8_t)gif->SBackGroundColor);
+                        struct rect *r = &gr->disposalrect;
+                        drawrect( gr->accumulator,r->x, r->y, r->w, r->h, (uint8_t)gif->SBackGroundColor);
                     }
                     break;
                 case DISPOSE_PREVIOUS:
                     // restore from backup
-                    blit(rdr->backup, rdr->accumulator,0,0,(int)gif->SWidth,(int)gif->SHeight);
+                    blit(gr->backup, gr->accumulator,0,0,(int)gif->SWidth,(int)gif->SHeight);
                     break;
             }
         }
 
         // back up the current accumulator if we'll need to roll back
         if (disposal == DISPOSE_PREVIOUS) {
-            if (rdr->backup) {
-                im_img_free(rdr->backup);
+            if (gr->backup) {
+                im_img_free(gr->backup);
             }
-            rdr->backup = im_img_clone(rdr->accumulator);
-            if (!rdr->backup) {
+            gr->backup = im_img_clone(gr->accumulator);
+            if (!gr->backup) {
                 rdr->err = ERR_NOMEM;
                 return;
             }
@@ -356,29 +310,29 @@ static void process_image(gif_reader* rdr)
 
         // decode the new frame into the accumulator
         if (trns == NO_TRANSPARENT_COLOR) {
-            if (!decode(gif, rdr->accumulator, gif->Image.Left, gif->Image.Top)) {
+            if (!decode(gif, gr->accumulator, gif->Image.Left, gif->Image.Top)) {
                 rdr->err = translate_err(gif->Error);
                 return;
             }
         } else {
-            if (!decode_trns(rdr, rdr->accumulator, gif->Image.Left, gif->Image.Top, (uint8_t)trns)) {
+            if (!decode_trns(rdr, gr->accumulator, gif->Image.Left, gif->Image.Top, (uint8_t)trns)) {
                 rdr->err = translate_err(gif->Error);
                 return;
             }
         }
 
         // update the palette
-        if (!apply_palette(gif, rdr->accumulator, trns)) {
+        if (!apply_palette(gif, gr->accumulator, trns)) {
             rdr->err = ERR_NOMEM;
             return;
         }
 
         // remember what we need to do next time
-        rdr->disposal = disposal;
-        rdr->disposalrect.x = (int)gif->Image.Left;
-        rdr->disposalrect.y = (int)gif->Image.Top;
-        rdr->disposalrect.w = (int)gif->Image.Width;
-        rdr->disposalrect.h = (int)gif->Image.Height;
+        gr->disposal = disposal;
+        gr->disposalrect.x = (int)gif->Image.Left;
+        gr->disposalrect.y = (int)gif->Image.Top;
+        gr->disposalrect.w = (int)gif->Image.Width;
+        gr->disposalrect.h = (int)gif->Image.Height;
     } else {
         // load each frame as separate image
         im_img* img = NULL;
@@ -405,12 +359,11 @@ static void process_image(gif_reader* rdr)
         img->y_offset = (int)gif->Image.Top;
         // TODO: record disposal details here
 
-        if (rdr->accumulator) {
-            im_img_free(rdr->accumulator);
+        if (gr->accumulator) {
+            im_img_free(gr->accumulator);
         }
-        rdr->accumulator = img;
+        gr->accumulator = img;
     }
-    rdr->frame_num++;
 }
 
 
@@ -450,9 +403,10 @@ static bool decode( GifFileType* gif, im_img* destimg, int destx, int desty )
 }
 
 
-static bool decode_trns( gif_reader* rdr, im_img* destimg, int destx, int desty, uint8_t trns )
+static bool decode_trns(im_reader* rdr, im_img* destimg, int destx, int desty, uint8_t trns )
 {
-    GifFileType* gif = rdr->gif;
+    gif_reader* gr = (gif_reader*)rdr;
+    GifFileType* gif = gr->gif;
     int w = (int)gif->Image.Width;
     int h = (int)gif->Image.Height;
     int x,y;
@@ -467,7 +421,7 @@ static bool decode_trns( gif_reader* rdr, im_img* destimg, int destx, int desty,
         int pass;
         for (pass = 0; pass < 4; ++pass) {
             for(y=offsets[pass]; y<h; y+= jumps[pass]) {
-                uint8_t *buf = rdr->linebuf;
+                uint8_t *buf = gr->linebuf;
                 uint8_t *dest = im_img_pos(destimg, destx+0, desty+y);
                 if (DGifGetLine(gif, buf, w) != GIF_OK) {
                     return false;
@@ -483,7 +437,7 @@ static bool decode_trns( gif_reader* rdr, im_img* destimg, int destx, int desty,
         }
     } else {
         for (y = 0; y < h; ++y) { 
-            uint8_t *buf = rdr->linebuf;
+            uint8_t *buf = gr->linebuf;
             uint8_t *dest = im_img_pos(destimg, destx+0, desty+y);
             if (DGifGetLine(gif, buf, w) != GIF_OK) {
                 return false;
@@ -501,9 +455,10 @@ static bool decode_trns( gif_reader* rdr, im_img* destimg, int destx, int desty,
 }
 
 
-static bool process_extension(gif_reader *rdr)
+static bool process_extension(im_reader *rdr)
 {
-    GifFileType* gif = rdr->gif;
+    gif_reader* gr = (gif_reader*)rdr;
+    GifFileType* gif = gr->gif;
     GifByteType* buf;
     int ext_code;
 
@@ -512,10 +467,10 @@ static bool process_extension(gif_reader *rdr)
     }
 
     if (ext_code==GRAPHICS_EXT_FUNC_CODE) {
-        if(DGifExtensionToGCB(buf[0], buf+1, &rdr->gcb)!=GIF_OK) {
+        if(DGifExtensionToGCB(buf[0], buf+1, &gr->gcb)!=GIF_OK) {
             return false;
         }
-        rdr->gcb_valid = true;
+        gr->gcb_valid = true;
         /*
         printf("ext (GCB) disposal=%d delay=%d trans=%d\n",
                 state->gcb.DisposalMode, state->gcb.DelayTime, state->gcb.TransparentColor );
@@ -549,7 +504,7 @@ static bool apply_palette(GifFileType* gif, im_img* img,  int transparent_idx)
     uint8_t buf[256*4];
     uint8_t* dest;
     int i;
-    ImPalFmt palfmt;
+    ImFmt palfmt;
     ColorMapObject* cm = gif->Image.ColorMap;
     if (!cm) {
         cm = gif->SColorMap;    // fall back to global palette
@@ -581,7 +536,7 @@ static bool apply_palette(GifFileType* gif, im_img* img,  int transparent_idx)
 // copy an image onto another
 static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, int h)
 {
-    size_t rowbytes = w*im_img_bytesperpixel(src);
+    size_t rowbytes = w * im_fmt_bytesperpixel(src->format);
 
     assert(destx >=0 && desty >=0);
     assert( w <= src->w && w <= dest->w);

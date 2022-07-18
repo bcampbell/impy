@@ -21,7 +21,7 @@ typedef struct im_img {
 
     // palette
     int pal_num_colours;    // 0=no palette
-    ImPalFmt pal_fmt;
+    ImFmt pal_fmt;
     void* pal_data;     // can be NULL, iff num_colours==0
 
     // metadata
@@ -43,19 +43,13 @@ extern im_img* im_img_clone(const im_img* src_img);
 // Convert an image to another format/datatype (a copy is returned, 
 extern im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
-// Helper to calculate the bytes per pixel required for a given format/datatype combination
-extern size_t im_bytesperpixel(ImFmt fmt, ImDatatype datatype);
-
 // Fetch a pointer to a specific pixel
 static inline void* im_img_pos(const im_img *img, int x, int y)
-    { return ((uint8_t*)(img->pixel_data)) + (y*img->pitch) + (x*im_bytesperpixel(img->format, img->datatype)); }
+    { return ((uint8_t*)(img->pixel_data)) + (y*img->pitch) + (x*im_fmt_bytesperpixel(img->format)); }
 
 // Fetch a pointer to the start of a specific row
 static inline void* im_img_row(const im_img *img, int row)
     { return im_img_pos(img,0,row); }
-
-static inline size_t im_img_bytesperpixel(const im_img *img)
-    { return im_bytesperpixel(img->format, img->datatype); }
 
 
 // image palette fns
@@ -64,13 +58,13 @@ static inline size_t im_img_bytesperpixel(const im_img *img)
 // the colours it points to.
 // If data is NULL, the palette data will be zeroed.
 // ncolours==0 means no palette.
-extern bool im_img_pal_set( im_img* img, ImPalFmt fmt, int ncolours, const void* data);
+extern bool im_img_pal_set( im_img* img, ImFmt fmt, int ncolours, const void* data);
 
 // load colours into existing palette, converting format if necessary
-extern bool im_img_pal_write( im_img* img, int first_colour, int num_colours, ImPalFmt data_fmt, const void* data);
+extern bool im_img_pal_write( im_img* img, int first_colour, int num_colours, ImFmt data_fmt, const void* data);
 
 // read colours out of palette, converting format if necessary
-extern bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImPalFmt dest_fmt, void* dest);
+extern bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImFmt dest_fmt, void* dest);
 
 // returns true if images have identical palettes (same format,
 // number of colours and colour data)

@@ -24,16 +24,16 @@ int main( int argc, char* argv[])
     ImErr err;
     err = test_indexed_img(IM_FILEFMT_PNG, "/tmp/test.png");
     if (err != ERR_NONE) {
-        fprintf(stderr, "test.png failed: ImErr: %d", err);
+        fprintf(stderr, "test.png failed: ImErr: %d\n", err);
     }
     err = test_indexed_img(IM_FILEFMT_BMP, "/tmp/test.bmp");
     if (err != ERR_NONE) {
-        fprintf(stderr, "test.bmp failed: ImErr: %d", err);
+        fprintf(stderr, "test.bmp failed: ImErr: %d\n", err);
     }
 
     test_anim(IM_FILEFMT_GIF, "/tmp/anim.gif");
     if (err != ERR_NONE) {
-        fprintf(stderr, "anim.gif failed: ImErr: %d", err);
+        fprintf(stderr, "anim.gif failed: ImErr: %d\n", err);
     }
 }
 
@@ -45,12 +45,12 @@ ImErr test_anim(ImFileFmt file_fmt, const char *filename)
         return err;
     }
 
-    im_begin_img(wr, 4, 4, FMT_COLOUR_INDEX);
+    im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
 
-    im_set_palette(wr, PALFMT_RGB, 4, pal);
+    im_set_palette(wr, IM_FMT_RGB, 4, pal);
     im_write_rows(wr, 4, frame1);
 
-    im_begin_img(wr, 4, 4, FMT_COLOUR_INDEX);
+    im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
     im_write_rows(wr, 4, frame2);
 
     err = im_writer_finish(wr);
@@ -65,9 +65,9 @@ ImErr test_indexed_img(ImFileFmt file_fmt, const char *filename)
         return err;
     }
 
-    im_begin_img(wr, 4, 4, FMT_COLOUR_INDEX);
+    im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
 
-    im_set_palette(wr, PALFMT_RGB, 4, pal);
+    im_set_palette(wr, IM_FMT_RGB, 4, pal);
     im_write_rows(wr, 4, frame1);
 
     err = im_writer_finish(wr);

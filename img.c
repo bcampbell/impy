@@ -6,47 +6,7 @@
 #include <string.h>    // for memcpy
 
 
-static void copy_pal_range( ImPalFmt src_fmt, const uint8_t* src, ImPalFmt dest_fmt, uint8_t *dest, int first_colour, int num_colours);
-
-
-// calc bytes per pixel
-size_t im_bytesperpixel(ImFmt fmt, ImDatatype datatype)
-{
-    int n=0;
-
-    switch (datatype) {
-        case DT_U8:
-        case DT_S8:
-            n=1;
-            break;
-        case DT_U16:
-        case DT_S16:
-        case DT_FLOAT16:
-            n=2;
-            break;
-        case DT_U32:
-        case DT_S32:
-        case DT_FLOAT32:
-            n=4;
-            break;
-        case DT_FLOAT64:
-            n=8;
-            break;
-    }
-
-    switch (fmt) {
-        case FMT_RGB: return 3*n;
-        case FMT_RGBA: return 4*n;
-        case FMT_BGR: return 3*n;
-        case FMT_BGRA: return 4*n;
-        case FMT_COLOUR_INDEX: return 1*n;
-        case FMT_ALPHA: return 1*n;
-        case FMT_LUMINANCE: return 1*n;
-    }
-    return 0;
-}
-
-
+static void copy_pal_range( ImFmt src_fmt, const uint8_t* src, ImFmt dest_fmt, uint8_t *dest, int first_colour, int num_colours);
 
 
 bool im_img_pal_equal(const im_img* a, const im_img* b)
@@ -73,7 +33,7 @@ bool im_img_pal_equal(const im_img* a, const im_img* b)
 
 
 // load colours into palette
-bool im_img_pal_write( im_img* img, int first_colour, int num_colours, ImPalFmt data_fmt, const void* data)
+bool im_img_pal_write( im_img* img, int first_colour, int num_colours, ImFmt data_fmt, const void* data)
 {
     if (first_colour+num_colours > img->pal_num_colours) {
         return false;
@@ -88,7 +48,7 @@ bool im_img_pal_write( im_img* img, int first_colour, int num_colours, ImPalFmt 
 
 
 // read colours from palette
-bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImPalFmt dest_fmt, void* dest)
+bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImFmt dest_fmt, void* dest)
 {
     if (first_colour+num_colours > img->pal_num_colours) {
         return false;
@@ -103,7 +63,7 @@ bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImPalFmt d
 
 
 // helper func - copy/convert palette colours
-static void copy_pal_range( ImPalFmt src_fmt, const uint8_t* src, ImPalFmt dest_fmt, uint8_t *dest, int first_colour, int num_colours) {
+static void copy_pal_range( ImFmt src_fmt, const uint8_t* src, ImFmt dest_fmt, uint8_t *dest, int first_colour, int num_colours) {
 
     if (src_fmt==PALFMT_RGB && dest_fmt==PALFMT_RGB) {
         memcpy(dest + (first_colour*3), src, num_colours*3);
@@ -140,7 +100,7 @@ im_img* im_img_clone(const im_img* src_img)
     ImFmt fmt = src_img->format;
     ImDatatype dt = src_img->datatype;
 
-    size_t bytesperline = w * im_bytesperpixel(fmt,dt);
+    size_t bytesperline = w * im_fmt_bytesperpixel(fmt);
     int y,z;
     im_img* dest_img = im_img_new(w,h,d,fmt,dt);
     if (!dest_img) {
@@ -176,7 +136,7 @@ im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
         return NULL;
     }
 
-    bytesPerPixel = im_bytesperpixel(fmt,datatype);
+    bytesPerPixel = im_fmt_bytesperpixel(fmt);
     if(bytesPerPixel==0) {
         return NULL;
     }
@@ -224,7 +184,7 @@ void im_img_free(im_img *img)
 
 
 // image palette fns
-bool im_img_pal_set( im_img* img, ImPalFmt fmt, int ncolours, const void* data)
+bool im_img_pal_set( im_img* img, ImFmt fmt, int ncolours, const void* data)
 {
     im_img* foo = img;
     int colsize;

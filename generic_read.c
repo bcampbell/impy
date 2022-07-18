@@ -6,23 +6,17 @@
 #include <string.h>
 //#include <limits.h>
 
-static bool generic_get_img(im_reader* reader, im_imginfo* info);
-static void generic_read_rows(im_reader* reader, unsigned int num_rows, uint8_t* buf);
-static void generic_read_palette(im_reader* reader, uint8_t *buf);
-static ImErr generic_reader_finish(im_reader* reader);
+static bool generic_get_img(im_reader* rdr);
+static void generic_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf);
+static void generic_reader_finish(im_reader* rdr);
 
 
 // Helper to simplify loaders which just slurp in a single im_img.
 typedef struct generic_reader {
-    // im_reader members
-    read_handler* handler;
-    ImErr err;
-    im_in* in;
+    im_reader base;
 
     // type-specific fields from here on
-    enum {READY, HEADER, BODY} state;
     im_img* img;
-    unsigned int rows_read;
     im_img* (*load_single)(im_in *in, ImErr *err);
 } generic_reader;
 
@@ -32,154 +26,98 @@ typedef struct generic_reader {
 static read_handler generic_read_handler = {
     generic_get_img,
     generic_read_rows,
-    generic_read_palette,
     generic_reader_finish
 };
 
 im_reader* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* in, ImErr* err )
 {
-    generic_reader *rdr = imalloc(sizeof(generic_reader));
-    if (!rdr) {
+    generic_reader *gr = imalloc(sizeof(generic_reader));
+    if (!gr) {
         *err = ERR_NOMEM;
         return NULL;
     }
 
     // im_reader fields
-    rdr->handler = &generic_read_handler;
-    rdr->err = ERR_NONE;
-    rdr->in = in;
+    i_reader_init(&gr->base);
+    gr->base.handler = &generic_read_handler;
+    gr->base.in = in;
 
     // type-specific fields
-    rdr->state = READY;
-    rdr->img = NULL;
-    rdr->rows_read = 0;
-    rdr->load_single = load_single;
+    gr->img = NULL;
+    gr->load_single = load_single;
 
-    return (im_reader*)rdr;
+    return (im_reader*)gr;
 }
 
 
-static bool generic_get_img(im_reader* reader, im_imginfo* info)
+static bool generic_get_img(im_reader* rdr)
 {
-    generic_reader *rdr = (generic_reader*)reader;
-    if (rdr->err != ERR_NONE) {
-        return false;
-    }
+    generic_reader *gr = (generic_reader*)rdr;
+    im_imginfo* info;
+    im_img* img; 
 
-    if (rdr->state != READY) {
-        rdr->err = ERR_BAD_STATE;
-        return false;
-    }
-
-    if (rdr->img) {
+    if (gr->img) {
         // No more frames.
         return false;
     }
-
     // Perform the load.
-    rdr->img = rdr->load_single(rdr->in, &rdr->err);
-    if (!rdr->img) {
+    gr->img = gr->load_single(rdr->in, &rdr->err);
+    if (!gr->img) {
         return false;
     }
 
-    info->w = rdr->img->w;
-    info->h = rdr->img->h;
-    info->x_offset = rdr->img->x_offset;
-    info->y_offset = rdr->img->y_offset;
-    info->fmt = rdr->img->format;
-    info->pal_num_colours = rdr->img->pal_num_colours;
-    info->pal_fmt = rdr->img->pal_fmt;
+    // Populate curr from the im_img.
+    img = gr->img;
+    info = &rdr->curr;
+    info->w = img->w;
+    info->h = img->h;
+    info->x_offset = img->x_offset;
+    info->y_offset = img->y_offset;
+    info->fmt = img->format;
+    info->pal_num_colours = img->pal_num_colours;
 
-    rdr->state = HEADER;
+    if (img->pal_num_colours>0) {
+        // Copy out palette, in RGBA format.
+        rdr->pal_data = irealloc(rdr->pal_data, img->pal_num_colours * im_fmt_bytesperpixel(IM_FMT_RGBA));
+        if (!rdr->pal_data) {
+            rdr->err = ERR_NOMEM;
+            return false;
+        }
+        im_convert_fn cvt_fn = pick_convert_fn(img->pal_fmt, DT_U8, IM_FMT_RGBA, DT_U8);
+        if (!cvt_fn) {
+            rdr->err = ERR_NOCONV;
+            return false;
+        }
+        cvt_fn(img->pal_data, rdr->pal_data, img->pal_num_colours);
+    }
+
     return true;
 }
 
-static void generic_read_rows(im_reader* reader, unsigned int num_rows, uint8_t* buf)
+static void generic_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf)
 {
-    generic_reader *rdr = (generic_reader*)reader;
-    if (rdr->err != ERR_NONE) {
-        return;
-    }
-    if (rdr->state == READY) {
-        rdr->err = ERR_BAD_STATE;
-        return;
-    }
+    generic_reader *gr = (generic_reader*)rdr;
+    size_t bytes_per_row;
+    im_img* img = gr->img;
 
-    if (rdr->state == HEADER) {
-        // start reading.
-        rdr->state = BODY;
-        rdr->rows_read = 0;
-    }
+    assert(rdr->state == READSTATE_BODY);
+    assert(img);
 
-    assert(rdr->state == BODY);
-    {
-        size_t bytes_per_row;
-        im_img* img = rdr->img;
-        assert(img);
-
-        bytes_per_row = im_img_bytesperpixel(img) * img->w;
-        if (rdr->rows_read + num_rows > img->h) {
-            rdr->err = ERR_TOO_MANY_ROWS;
-            return;
-        }
-        for (unsigned int row = 0; row < num_rows; ++row) {
-            unsigned int y = rdr->rows_read + row;
-            memcpy(buf, im_img_row(img, y), bytes_per_row);
-            buf += bytes_per_row;
-        }
-        rdr->rows_read += num_rows;
-
-        // Read them all?
-        if (rdr->rows_read == img->h) {
-            rdr->state = READY;
-        }
+    bytes_per_row = im_fmt_bytesperpixel(img->format) * img->w;
+    for (unsigned int row = 0; row < num_rows; ++row) {
+        unsigned int y = rdr->rows_read + row;
+        memcpy(buf, im_img_row(img, y), bytes_per_row);
+        buf += bytes_per_row;
     }
 }
 
-static void generic_read_palette(im_reader* reader, uint8_t *buf)
+static void generic_reader_finish(im_reader* rdr)
 {
-    generic_reader *rdr = (generic_reader*)reader;
-
-    if (rdr->err != ERR_NONE) {
-        return;
+    generic_reader *gr = (generic_reader*)rdr;
+    if(gr->img) {
+        im_img_free(gr->img);
+        gr->img = NULL;
     }
-    if (rdr->state != HEADER) {
-        rdr->err = ERR_BAD_STATE;
-        return;
-    }
-
-    {
-        im_img *img = rdr->img;
-        assert(img);
-
-        if (img->pal_num_colours > 0) {
-            size_t s = (img->pal_fmt == PALFMT_RGBA) ? 4 : 3;
-            memcpy(buf, img->pal_data, img->pal_num_colours * s);
-        }
-    }
-}
-
-static ImErr generic_reader_finish(im_reader* reader)
-{
-    ImErr err;
-    generic_reader *rdr = (generic_reader*)reader;
-
-    if(rdr->img) {
-        im_img_free(rdr->img);
-        rdr->img = NULL;
-    }
-
-    if (rdr->in) {
-        if( im_in_close(rdr->in) < 0) {
-            if (rdr->err != ERR_NONE) {
-                rdr->err = ERR_FILE;
-            }
-        }
-    }
-
-    err = rdr->err;
-    ifree(rdr);
-    return err;
 }
 
 

@@ -8,13 +8,28 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/***********
+ * format conversion helpers (convert.c)
+ */
+
+// signature for a fn to convert w pixels
+typedef void (*im_convert_fn)( const uint8_t* src, uint8_t* dest, int w);
+
+// pick a conversion fn
+extern im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, ImDatatype destDT );
+
+
+/***********
+ * write API support
+ */
 
 typedef struct write_handler {
     ImFileFmt file_fmt;
-    void (*begin_img)(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt);
-    void (*write_rows)(im_writer* writer, unsigned int num_rows, const uint8_t *data);
-    void (*set_palette)(im_writer* writer, ImPalFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
-    ImErr (*finish)(im_writer* writer);
+    void (*pre_img)(im_writer* writer);
+    void (*emit_header)(im_writer* writer);
+    void (*emit_rows)(im_writer* writer, unsigned int num_rows, const uint8_t *data);
+    void (*post_img)(im_writer* writer);
+    void (*finish)(im_writer* writer);
 } write_handler;
 
 // The common fields shared by all writers.
@@ -22,14 +37,48 @@ typedef struct im_writer {
     write_handler* handler;
     ImErr err;
     im_out* out;
+
+    // Overall writer state
+    enum {WRITESTATE_READY, WRITESTATE_HEADER, WRITESTATE_BODY} state;
+    unsigned int num_frames;
+
+    // Set by im_begin_img()
+    int x_offset;
+    int y_offset;
+    unsigned int w;
+    unsigned int h;
+    ImFmt fmt;
+    size_t bytes_per_row;
+
+    // Number of rows from the current frame which have been written out
+    // by im_write_rows().
+    unsigned int rows_written;
+
+    // If we need to pixel-convert internally...
+    ImFmt internal_fmt;
+    size_t internal_bytes_per_row;
+    // rowbuf and cvt_fn used if internal fmt different from fmt
+    uint8_t* rowbuf;
+    im_convert_fn row_cvt_fn;
+
+    // Palette - set by im_set_palette(), persists between frames.
+    unsigned int pal_num_colours;
+    ImFmt pal_fmt;
+    uint8_t* pal_data;
 } im_writer;
 
+// im_write.c
+void i_writer_init(im_writer* writer);
+void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt);
+
+/**********
+ * read API support
+ */
 
 typedef struct read_handler {
-    bool (*get_img)(im_reader* reader, im_imginfo* info);
-    void (*read_rows)(im_reader* reader, unsigned int num_rows, uint8_t* buf);
-    void (*read_palette)(im_reader* reader, uint8_t* buf);
-    ImErr (*finish)(im_reader* reader);
+    bool (*get_img)(im_reader* rdr);
+    void (*read_rows)(im_reader* rdr, unsigned int num_rows, uint8_t* buf);
+    void (*finish)(im_reader* rdr);
 } read_handler;
 
 
@@ -38,22 +87,50 @@ typedef struct im_reader {
     read_handler* handler;
     ImErr err;
     im_in* in;
+
+    enum {READSTATE_READY, READSTATE_HEADER, READSTATE_BODY} state;
+    int frame_num;
+
+    im_imginfo curr;
+    unsigned int rows_read;
+
+    // Internal palette fmt is IM_FMT_RGBA.
+    // Palette size in curr->pal_num_colours.
+    uint8_t* pal_data;
+
+    // If user requests a different pixelformat im_read_rows() will convert
+    // on-the-fly.
+    ImFmt external_fmt;
+    uint8_t* rowbuf;
+    im_convert_fn row_cvt_fn;
 } im_reader;
 
+// From im_read.c
+void i_reader_init(im_reader* rdr);
 
-// from util.c
+
+// From generic_read.c
+extern im_reader* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* in, ImErr* err );
+
+// From various readers.
+im_img* iread_png_image(im_in* rdr, ImErr *err);
+im_img* iread_bmp_image(im_in* rdr, ImErr *err);
+im_img* iread_jpeg_image(im_in* rdr, ImErr *err);
+im_img* iread_pcx_image(im_in* rdr, ImErr *err);
+im_img* iread_targa_image(im_in* rdr, ImErr *err);
+
+
+// From im.c
+extern void* imalloc(size_t size);
+extern void* irealloc(void *ptr, size_t size);
+extern void ifree(void* ptr);
+
+// From util.c
 extern int istricmp(const char* a, const char* b);
 extern bool is_path_sep(char c);
 extern const char* ext_part( const char* path);
 
-// from generic_read.c
-extern im_reader* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* in, ImErr* err );
-
-// from im.c
-extern void* imalloc( size_t size);
-extern void ifree(void* ptr);
-
-// binary decode helpers
+// Binary decode helpers
 static inline uint32_t decode_u32le(uint8_t** cursor)
 {
     uint8_t* p = *cursor;
@@ -101,21 +178,6 @@ static inline void encode_s16le(uint8_t** cursor, int16_t val)
 
 
 
-
-/* format conversion helpers (convert.c) */
-
-// signature for a fn to convert w pixels
-typedef void (*im_convert_fn)( const uint8_t* src, uint8_t* dest, int w);
-
-// pick a conversion fn
-extern im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, ImDatatype destDT );
-
-
-im_img* iread_png_image(im_in* rdr, ImErr *err);
-im_img* iread_bmp_image(im_in* rdr, ImErr *err);
-im_img* iread_jpeg_image(im_in* rdr, ImErr *err);
-im_img* iread_pcx_image(im_in* rdr, ImErr *err);
-im_img* iread_targa_image(im_in* rdr, ImErr *err);
 
 #endif
 
