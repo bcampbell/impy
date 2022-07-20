@@ -10,21 +10,26 @@ extern "C" {
 #include <stdbool.h>
 
 
+// The pixelformats we support.
+// All byte-oriented at the moment, but likely to change.
+// X = pad byte
+// A = alpha
+// R,G,B = colour components
 typedef enum ImFmt {
     IM_FMT_NONE = 0,
-    IM_FMT_INDEX8,
+    IM_FMT_INDEX8,  // Bytes indexing a palette.
+    IM_FMT_RGB,
     IM_FMT_RGBA,
     IM_FMT_RGBX,
-    IM_FMT_RGB,
     IM_FMT_ARGB,
     IM_FMT_XRGB,
+    IM_FMT_BGR,
     IM_FMT_BGRA,
     IM_FMT_BGRX,
-    IM_FMT_BGR,
     IM_FMT_ABGR,
     IM_FMT_XBGR,
     IM_FMT_ALPHA,
-    IM_FMT_LUMINANCE
+    IM_FMT_LUMINANCE    // Not really supported yet.
 } ImFmt;
 
 // TODO: bit encoding for pixelformats. Want to encode:
@@ -70,6 +75,7 @@ static inline size_t im_fmt_bytesperpixel(ImFmt fmt)
     return s;
 }
 
+// Supported file formats.
 typedef enum ImFileFmt {
     IM_FILEFMT_UNKNOWN=0,
     IM_FILEFMT_PNG,
@@ -199,7 +205,6 @@ ImFileFmt im_guess_file_format(const char* filename);
 typedef struct im_writer im_writer;
 
 im_writer* im_writer_open_file(const char *filename, ImErr* err);
-// ownership of out is passed to writer.
 im_writer* im_writer_new(ImFileFmt file_fmt, im_out* out, ImErr* err);
 
 void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt);

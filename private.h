@@ -37,6 +37,7 @@ typedef struct im_writer {
     write_handler* handler;
     ImErr err;
     im_out* out;
+    bool out_owned; // close and free `out` when done?
 
     // Overall writer state
     enum {WRITESTATE_READY, WRITESTATE_HEADER, WRITESTATE_BODY} state;
@@ -87,6 +88,7 @@ typedef struct im_reader {
     read_handler* handler;
     ImErr err;
     im_in* in;
+    bool in_owned; // close and free `in` when done?
 
     enum {READSTATE_READY, READSTATE_HEADER, READSTATE_BODY} state;
     int frame_num;

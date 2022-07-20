@@ -34,12 +34,15 @@ im_writer* im_writer_new(ImFileFmt file_fmt, im_out* out, ImErr* err)
     }
 }
 
-
 ImErr im_writer_finish(im_writer* writer)
 {
     ImErr err;
+
+    // TODO - check for unfinished images and set error!
+
     writer->handler->finish(writer);
-    if (writer->out) {
+    if (writer->out && writer->out_owned) {
+        // Close and free `out`.
         if (im_out_close(writer->out) < 0 ) {
             if (writer->err == ERR_NONE) {
                 writer->err = ERR_FILE;
@@ -70,6 +73,7 @@ im_writer* im_writer_open_file(const char *filename, ImErr* err)
 {
     im_out* out;
     ImFileFmt file_fmt;
+    im_writer* writer;
     
     file_fmt = im_guess_file_format(filename);
 
@@ -78,7 +82,14 @@ im_writer* im_writer_open_file(const char *filename, ImErr* err)
         return NULL;
     }
 
-    return im_writer_new(file_fmt, out, err);
+    writer = im_writer_new(file_fmt, out, err);
+    if (!writer) {
+        // Close and free.
+        im_out_close(out);
+        return NULL;
+    }
+    writer->out_owned = true;
+    return writer;
 }
 
 
@@ -93,12 +104,6 @@ void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
         writer->err = ERR_UNFINISHED_IMG;   // hmm...
         return;
     }
-#if 0
-    if (writer->num_frames>0) {
-        writer->err = ERR_ANIM_UNSUPPORTED;  // animation not supported.
-        return;
-    }
-#endif
 
     writer->x_offset = 0;
     writer->y_offset = 0;
@@ -107,7 +112,8 @@ void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
     writer->fmt = fmt;
     writer->bytes_per_row = im_fmt_bytesperpixel(fmt) * w;
 
-    // assume internal format is same
+    // Assume internal format is same (but backend can call
+    // i_writer_set_internal_fmt() to chnage this).
     writer->internal_fmt = fmt;
     writer->internal_bytes_per_row = writer->bytes_per_row;
     writer->row_cvt_fn = NULL;
@@ -126,15 +132,10 @@ void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
 void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt)
 {
     if (internal_fmt == writer->fmt) {
-        // Bypass conversion.
+        // Same format. Bypass conversion.
         writer->internal_fmt = internal_fmt;
         writer->internal_bytes_per_row = writer->bytes_per_row;
         writer->row_cvt_fn = NULL;
-        return;
-    }
-
-    if (internal_fmt == IM_FMT_INDEX8) {
-        writer->err = ERR_NOCONV;   // quantisation would be required
         return;
     }
 

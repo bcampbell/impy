@@ -41,6 +41,7 @@ im_reader* im_reader_open_file(const char* filename, ImErr* err)
 {
     im_in* in;
     ImFileFmt file_fmt;
+    im_reader* rdr;
     
     // TODO: magic cookie sniffing instead of extension guessing here!
     file_fmt = im_guess_file_format(filename);
@@ -50,7 +51,14 @@ im_reader* im_reader_open_file(const char* filename, ImErr* err)
         return NULL;
     }
 
-    return im_reader_new(file_fmt, in, err);
+    rdr = im_reader_new(file_fmt, in, err);
+    if (!rdr) {
+        im_in_close(in);    // also frees in
+        return NULL;
+    }
+
+    rdr->in_owned = true;
+    return rdr;
 }
 
 void im_reader_set_fmt(im_reader* rdr, ImFmt fmt)
@@ -90,12 +98,14 @@ ImErr im_reader_finish(im_reader* rdr)
         rdr->rowbuf = NULL;
     }
 
-    if (rdr->in) {
+    if (rdr->in && rdr->in_owned) {
+        // Close and free `in`.
         if (im_in_close(rdr->in) < 0) {
             if (rdr->err != ERR_NONE) {
                 rdr->err = ERR_FILE;
             }
         }
+        rdr->in = NULL;
     }
 
     err = rdr->err;
