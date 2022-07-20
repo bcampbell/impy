@@ -65,9 +65,6 @@ static void pre_img(im_writer* wr)
         wr->err = ERR_ANIM_UNSUPPORTED;  // animation not supported.
         return;
     }
-
-    // We want im_set_palette() to serve us RGBA format.
-    wr->pal_fmt = IM_FMT_RGBA;
 }
 
 static void emit_header(im_writer* wr)
@@ -159,7 +156,6 @@ static void emit_palette(im_writer* wr)
     int i;
     ipng_writer* pw = (ipng_writer*)wr;
 
-    assert(wr->pal_fmt == IM_FMT_RGBA); // As per prep_img().
     src = wr->pal_data;
     for (i = 0; i < wr->pal_num_colours; ++i) {
         rgb[i].red = *src++;

@@ -124,7 +124,7 @@ static void read_file_header(im_reader* rdr)
     if (gr->coalesce) {
         int w = (int)gr->gif->SWidth;
         int h = (int)gr->gif->SHeight;
-        gr->accumulator = im_img_new(w, h, 1, FMT_COLOUR_INDEX, DT_U8);
+        gr->accumulator = im_img_new(w, h, 1, IM_FMT_INDEX8);
         if (!gr->accumulator) {
             rdr->err = ERR_NOMEM;
             return;
@@ -211,12 +211,12 @@ static bool gif_get_img(im_reader* rdr)
                             rdr->err = ERR_NOMEM;
                             return false;
                         }
-                        im_convert_fn cvt_fn = pick_convert_fn(img->pal_fmt, DT_U8, IM_FMT_RGBA, DT_U8);
+                        im_convert_fn cvt_fn = i_pick_convert_fn(img->pal_fmt, IM_FMT_RGBA);
                         if (!cvt_fn) {
                             rdr->err = ERR_NOCONV;
                             return false;
                         }
-                        cvt_fn(img->pal_data, rdr->pal_data, img->pal_num_colours);
+                        cvt_fn(img->pal_data, rdr->pal_data, img->pal_num_colours, 0, NULL);
                     }
                 }
                 return true;    // got an image.
@@ -338,7 +338,7 @@ static void process_image(im_reader* rdr)
         im_img* img = NULL;
         // TODO: could avoid mallocs each frame and reuse img buffer if big enough.
         // im_img_reuse()?
-        img = im_img_new((int)gif->Image.Width, (int)gif->Image.Height,1,FMT_COLOUR_INDEX, DT_U8);
+        img = im_img_new((int)gif->Image.Width, (int)gif->Image.Height,1,IM_FMT_INDEX8);
         if (!img) {
             rdr->err = ERR_NOMEM;
             return;
@@ -525,11 +525,11 @@ static bool apply_palette(GifFileType* gif, im_img* img,  int transparent_idx)
         *dest++ = (transparent_idx == i) ? 0 : 255;
     }
 
-    palfmt = (transparent_idx==NO_TRANSPARENT_COLOR) ? PALFMT_RGB:PALFMT_RGBA;
+    palfmt = (transparent_idx==NO_TRANSPARENT_COLOR) ? IM_FMT_RGB : IM_FMT_RGBA;
     if( !im_img_pal_set( img, palfmt, cm->ColorCount, NULL )) {
         return false;
     }
-    return im_img_pal_write( img, 0, cm->ColorCount, PALFMT_RGBA, buf);
+    return im_img_pal_write( img, 0, cm->ColorCount, IM_FMT_RGBA, buf);
 }
 
 
@@ -545,7 +545,6 @@ static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, 
     assert( desty+h <= dest->h);
 
     assert( src->format == dest->format);
-    assert( src->datatype == dest->datatype);
 
     for (int y=0; y<h; ++y) {
         memcpy( im_img_pos(dest,destx,desty+y), im_img_pos(src, 0,y), rowbytes);

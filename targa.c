@@ -221,13 +221,13 @@ im_img* iread_targa_image( im_in* rdr, ImErr* err )
     h = LE16(hdr.height);
     
     if (indexed) {
-        fmt = FMT_COLOUR_INDEX;
+        fmt = IM_FMT_INDEX8;
     } else if(alpha) {
-        fmt = FMT_RGBA;
+        fmt = IM_FMT_RGBA;
     } else {
-        fmt = FMT_RGB;
+        fmt = IM_FMT_RGB;
     }
-    img = im_img_new(w, h, 1, fmt, DT_U8);
+    img = im_img_new(w, h, 1, fmt);
     if (!img) {
         *err = ERR_NOMEM;
         goto cleanup;

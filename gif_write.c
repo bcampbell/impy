@@ -77,11 +77,6 @@ static void pre_img(im_writer* writer)
     if (writer->err != ERR_NONE) {
         return;
     }
-
-    // Set the palette format we want (im_set_palette will convert to this).
-    // We want the alpha channel even if gif can't write it, because we
-    // use it to pick a transparent colour index (if any).
-    writer->pal_fmt = IM_FMT_RGBA;
 }
 
 

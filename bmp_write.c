@@ -85,9 +85,6 @@ static void ibmp_prep_img(im_writer* writer)
         writer->err = ERR_ANIM_UNSUPPORTED;
         return;
     }
-
-    // Set the palette format we want (im_set_palette will convert to this).
-    writer->pal_fmt = IM_FMT_BGRA;
 }
 
 // Write out everything up to the start of the row data itself.
@@ -158,11 +155,21 @@ static void ibmp_emit_header(im_writer* wr)
     }
 
     // If there's a palette, write it out.
-    if (paletteByteSize > 0) {
-        uint8_t* buf = NULL;
-        // write palette as BGRA
-        assert(wr->pal_fmt == IM_FMT_BGRA);    // as we requested in prep_img
-        if (im_write(wr->out, wr->pal_data, paletteByteSize) != paletteByteSize) {
+    if (wr->pal_num_colours > 0) {
+        // Write palette as BGRA
+        im_convert_fn pal_cvt_fn = i_pick_convert_fn(IM_FMT_RGBA, IM_FMT_BGRA);
+        if (!pal_cvt_fn) {
+            wr->err = ERR_NOCONV;
+            return;
+        }
+        size_t bufsize = im_fmt_bytesperpixel(IM_FMT_BGRA) * wr->pal_num_colours;
+        uint8_t* buf = imalloc(bufsize);
+        if (!buf) {
+            wr->err = ERR_NOMEM;
+            return;
+        }
+        pal_cvt_fn(wr->pal_data, buf, wr->pal_num_colours, 0, NULL);
+        if (im_write(wr->out, buf, bufsize) != bufsize) {
             wr->err = ERR_FILE;
         }
         if (buf) {

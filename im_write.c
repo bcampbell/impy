@@ -133,12 +133,12 @@ void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt)
         return;
     }
 
-    if (internal_fmt == FMT_COLOUR_INDEX) {
+    if (internal_fmt == IM_FMT_INDEX8) {
         writer->err = ERR_NOCONV;   // quantisation would be required
         return;
     }
 
-    writer->row_cvt_fn = pick_convert_fn(internal_fmt, DT_U8, writer->fmt, DT_U8);
+    writer->row_cvt_fn = i_pick_convert_fn(internal_fmt, writer->fmt);
     if (writer->row_cvt_fn == NULL) {
         writer->err = ERR_NOCONV;
         return;
@@ -188,7 +188,7 @@ void im_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data
     } else {
         // convert and write one row at a time.
         for (unsigned int i = 0; i < num_rows; ++i) {
-            writer->row_cvt_fn(data, writer->rowbuf, writer->w);
+            writer->row_cvt_fn(data, writer->rowbuf, writer->w, writer->pal_num_colours, writer->pal_data);
             writer->handler->emit_rows(writer, 1, writer->rowbuf);
             data += writer->bytes_per_row;
             writer->rows_written++;
@@ -226,21 +226,17 @@ void im_set_palette(im_writer* wr, ImFmt pal_fmt, unsigned int num_colours, cons
         return;
     }
 
-    // If backend hasn't expressed a preference, take whatever is given.
-    if (wr->pal_fmt == IM_FMT_NONE) {
-        wr->pal_fmt = pal_fmt;
-    }
-   
-    im_convert_fn cvt = pick_convert_fn(pal_fmt, DT_U8, wr->pal_fmt, DT_U8);
+    // Internally we always store as RGBA 
+    im_convert_fn cvt = i_pick_convert_fn(pal_fmt, IM_FMT_RGBA);
     if (!cvt) {
         wr->err = ERR_NOCONV;   // No suitable palette conversion.
         return;
     }
 
     // Allocate and copy/convert
-    size_t byte_cnt = num_colours * im_fmt_bytesperpixel(wr->pal_fmt);
+    size_t byte_cnt = num_colours * im_fmt_bytesperpixel(IM_FMT_RGBA);
     wr->pal_data = irealloc(wr->pal_data, byte_cnt);
-    cvt(colours, wr->pal_data, num_colours);
+    cvt(colours, wr->pal_data, num_colours, 0, NULL);
     wr->pal_num_colours = num_colours;
 }
 

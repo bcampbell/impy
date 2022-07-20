@@ -83,12 +83,12 @@ static bool generic_get_img(im_reader* rdr)
             rdr->err = ERR_NOMEM;
             return false;
         }
-        im_convert_fn cvt_fn = pick_convert_fn(img->pal_fmt, DT_U8, IM_FMT_RGBA, DT_U8);
+        im_convert_fn cvt_fn = i_pick_convert_fn(img->pal_fmt, IM_FMT_RGBA);
         if (!cvt_fn) {
             rdr->err = ERR_NOCONV;
             return false;
         }
-        cvt_fn(img->pal_data, rdr->pal_data, img->pal_num_colours);
+        cvt_fn(img->pal_data, rdr->pal_data, img->pal_num_colours, 0, NULL);
     }
 
     return true;

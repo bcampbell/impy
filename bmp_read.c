@@ -332,16 +332,16 @@ static im_img* read_image(bmp_state* bmp, im_in* rdr, ImErr* err)
     ImFmt fmt;
 
     if (bmp->bitcount<16) {
-        fmt = FMT_COLOUR_INDEX;
+        fmt = IM_FMT_INDEX8;
     } else {
         if ( bmp->mask[3] ) {
-            fmt = FMT_RGBA;
+            fmt = IM_FMT_RGBA;
         } else {
-            fmt = FMT_RGB;
+            fmt = IM_FMT_RGB;
         }
     }
 
-    img = im_img_new(bmp->w, bmp->h, 1, fmt, DT_U8);
+    img = im_img_new(bmp->w, bmp->h, 1, fmt);
     if (!img) {
         *err = ERR_NOMEM;
         goto bailout;
@@ -427,7 +427,7 @@ static bool cook_colour_table(bmp_state* bmp, im_img* img, ImErr* err)
         *dest++ = src[0];
         src += colsize;
     }
-    if (!im_img_pal_set(img, PALFMT_RGB, bmp->ncolours, buf)) {
+    if (!im_img_pal_set(img, IM_FMT_RGB, bmp->ncolours, buf)) {
         *err = ERR_NOMEM;
         return false;
     }

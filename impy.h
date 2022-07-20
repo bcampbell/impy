@@ -23,21 +23,9 @@ typedef enum ImFmt {
     IM_FMT_BGR,
     IM_FMT_ABGR,
     IM_FMT_XBGR,
-    FMT_ALPHA,
-    FMT_LUMINANCE
+    IM_FMT_ALPHA,
+    IM_FMT_LUMINANCE
 } ImFmt;
-
-// phasing out:
-#define FMT_RGB  IM_FMT_RGB
-#define FMT_RGBA IM_FMT_RGBA
-#define FMT_BGR IM_FMT_BGR
-#define FMT_BGRA IM_FMT_BGRA
-#define FMT_COLOUR_INDEX IM_FMT_INDEX8
-//    FMT_ALPHA,
-//    FMT_LUMINANCE
-
-#define PALFMT_RGBA IM_FMT_RGBA
-#define PALFMT_RGB IM_FMT_RGB
 
 // TODO: bit encoding for pixelformats. Want to encode:
 // type: 0=rgb, 1=indexed, others... (2 bits)
@@ -54,8 +42,8 @@ static inline bool im_fmt_is_indexed(ImFmt fmt)
 static inline bool im_fmt_has_rgb(ImFmt fmt)
 {
     return fmt != IM_FMT_INDEX8 &&
-        fmt != FMT_ALPHA &&
-        fmt != FMT_LUMINANCE;
+        fmt != IM_FMT_ALPHA &&
+        fmt != IM_FMT_LUMINANCE;
 }
 
 // Return true if fmt has an alpha channel.
@@ -65,7 +53,7 @@ static inline bool im_fmt_has_alpha(ImFmt fmt)
         fmt == IM_FMT_BGRA ||
         fmt == IM_FMT_ARGB ||
         fmt == IM_FMT_ABGR ||
-        fmt == FMT_ALPHA;
+        fmt == IM_FMT_ALPHA;
 }
 
 static inline size_t im_fmt_bytesperpixel(ImFmt fmt)
@@ -92,20 +80,6 @@ typedef enum ImFileFmt {
     IM_FILEFMT_TARGA,
     IM_FILEFMT_PCX
 } ImFileFmt;
-
-// data types
-// NOTE: U8 is the only real supported format right now
-typedef enum ImDatatype {
-    DT_U8=0,
-    DT_S8,
-    DT_U16,
-    DT_S16,
-    DT_U32,
-    DT_S32,
-    DT_FLOAT16,
-    DT_FLOAT32,
-    DT_FLOAT64
-} ImDatatype;
 
 
 // TODO: group into user-facing errors and coder errors
@@ -257,6 +231,8 @@ im_reader* im_reader_new(ImFileFmt file_fmt, im_in *in, ImErr *err);
 im_reader* im_reader_open_file(const char *filename, ImErr *err);
 
 bool im_get_img(im_reader *reader, im_imginfo *info);
+void im_reader_set_fmt(im_reader* rdr, ImFmt fmt);
+
 ImErr im_reader_err(im_reader *reader);
 void im_read_rows(im_reader *reader, unsigned int num_rows, uint8_t *buf);
 

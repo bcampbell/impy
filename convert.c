@@ -5,383 +5,111 @@
 #include <string.h>
 #include <assert.h>
 
-static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
 
-static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
-static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
-static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
-static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
-static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt );
+/*******************
+ * INDEX8 -> whatever
+ */
 
-
-static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype );
-
-static void cvt_u8RGB_u8RGB( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8RGB_u8RGBA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8RGB_u8BGR( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8RGB_u8BGRA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8RGB_u8ALPHA( const uint8_t* src, uint8_t* dest, int w );
-
-static void cvt_u8RGBA_u8RGB( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8RGBA_u8RGBA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8RGBA_u8BGR( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8RGBA_u8BGRA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8RGBA_u8ALPHA( const uint8_t* src, uint8_t* dest, int w );
-
-static void cvt_u8BGR_u8RGB( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8BGR_u8RGBA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8BGR_u8BGR( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8BGR_u8BGRA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8BGR_u8ALPHA( const uint8_t* src, uint8_t* dest, int w );
-
-static void cvt_u8BGRA_u8RGB( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8BGRA_u8RGBA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8BGRA_u8BGR( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8BGRA_u8BGRA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8BGRA_u8ALPHA( const uint8_t* src, uint8_t* dest, int w );
-
-static void cvt_u8ALPHA_u8RGB( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8ALPHA_u8RGBA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8ALPHA_u8BGR( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8ALPHA_u8BGRA( const uint8_t* src, uint8_t* dest, int w );
-static void cvt_u8ALPHA_u8ALPHA( const uint8_t* src, uint8_t* dest, int w );
-
-
-im_img* im_img_convert( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
+static void cvt_u8INDEX_u8RGB(const uint8_t* src, uint8_t* dest, unsigned int w,  unsigned nrgba, const uint8_t* rgba)
 {
-    if (srcImg->datatype != DT_U8 || destDatatype != DT_U8) {
-        // TODO - type conversions!
-        // maybe just fmtconvert to same type, then use a second
-        // pass to convert the type?
-        return NULL;
-    }
-    if(srcImg->format != FMT_COLOUR_INDEX && destFmt == FMT_COLOUR_INDEX) {
-        // no unsolicited quantising, thankyouverymuch
-        return NULL;
-    }
-
-    switch (srcImg->format) {
-        case FMT_COLOUR_INDEX:
-            return convert_indexed(srcImg, destFmt, destDatatype);
-        case FMT_RGB:
-        case FMT_RGBA:
-        case FMT_BGR:
-        case FMT_BGRA:
-        case FMT_ALPHA:
-            return convert_direct(srcImg, destFmt, destDatatype);
-        default:
-            return NULL;
-    }
-}
-
-static im_img* convert_indexed( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
-{
-    im_img* destImg = NULL;
-
-    // pick line-converter
-    void (*fn)( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt ) = NULL;
-    switch (destFmt) {
-        case FMT_RGB: fn=cvt_u8INDEX_u8RGB; break;
-        case FMT_RGBA: fn=cvt_u8INDEX_u8RGBA; break;
-        case FMT_BGR: fn=cvt_u8INDEX_u8BGR; break;
-        case FMT_BGRA: fn=cvt_u8INDEX_u8BGRA; break;
-        case FMT_COLOUR_INDEX: break;   // TODO: just pick closest colours?
-        case FMT_ALPHA:  fn=cvt_u8INDEX_u8ALPHA; break;
-        case FMT_LUMINANCE: break;  //TODO
-        default: break;
-    }
-    if (fn==NULL) {
-        return NULL;
-    }
-
-
-    // convert!
-    destImg = im_img_new(srcImg->w, srcImg->h, srcImg->d,  destFmt, destDatatype);
-    if (destImg) {
-        int d,y;
-        const uint8_t* srcLine = im_img_row(srcImg,0);
-        uint8_t* destLine = im_img_row(destImg,0);
-        for (d=0; d<srcImg->d; ++d) {
-            for (y=0; y<srcImg->h; ++y) {
-                fn( srcLine, destLine, srcImg->w, srcImg->pal_data, srcImg->pal_fmt);
-                destLine += destImg->pitch;
-                srcLine += srcImg->pitch;
-            }
-        }
-    }
-    return destImg;
-}
-
-
-
-static void cvt_u8INDEX_u8RGB( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
-{
-    int x;
-    const uint8_t* cols = (const uint8_t*)pal_data;
-    switch (pal_fmt)
-    {
-        case PALFMT_RGB:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *3;
-                ++src;
-                *dest++ = cols[idx+0];
-                *dest++ = cols[idx+1];
-                *dest++ = cols[idx+2];
-            } 
-            break;
-        case PALFMT_RGBA:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *4;
-                ++src;
-                *dest++ = cols[idx+0];
-                *dest++ = cols[idx+1];
-                *dest++ = cols[idx+2];
-            } 
-            break;
-        default:
-            assert(false);
-            break;
-    }
-}
-
-
-static void cvt_u8INDEX_u8RGBA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
-{
-    int x;
-    const uint8_t* cols = (const uint8_t*)pal_data;
-    switch (pal_fmt)
-    {
-        case PALFMT_RGB:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *3;
-                ++src;
-                *dest++ = cols[idx+0];
-                *dest++ = cols[idx+1];
-                *dest++ = cols[idx+2];
-                *dest++ = 255;
-            } 
-            break;
-        case PALFMT_RGBA:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *4;
-                ++src;
-                *dest++ = cols[idx+0];
-                *dest++ = cols[idx+1];
-                *dest++ = cols[idx+2];
-                *dest++ = cols[idx+3];
-            } 
-            break;
-        default:
-            assert(false);
-            break;
-    }
-}
-
-
-static void cvt_u8INDEX_u8BGR( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
-{
-    int x;
-    const uint8_t* cols = (const uint8_t*)pal_data;
-    switch (pal_fmt)
-    {
-        case PALFMT_RGB:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *3;
-                ++src;
-                *dest++ = cols[idx+2];
-                *dest++ = cols[idx+1];
-                *dest++ = cols[idx+0];
-            } 
-            break;
-        case PALFMT_RGBA:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *4;
-                ++src;
-                *dest++ = cols[idx+2];
-                *dest++ = cols[idx+1];
-                *dest++ = cols[idx+0];
-            } 
-            break;
-        default:
-            assert(false);
-            break;
+    unsigned int x;
+    for (x = 0; x < w; ++x) {
+        unsigned int idx = ((int)*src) * 4;
+        ++src;
+        *dest++ = rgba[idx+0];
+        *dest++ = rgba[idx+1];
+        *dest++ = rgba[idx+2];
     } 
 }
 
-static void cvt_u8INDEX_u8BGRA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
+
+static void cvt_u8INDEX_u8RGBA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned nrgba, const uint8_t* rgba)
 {
-    int x;
-    const uint8_t* cols = (const uint8_t*)pal_data;
-    switch (pal_fmt)
-    {
-        case PALFMT_RGB:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *3;
-                ++src;
-                *dest++ = cols[idx+2];
-                *dest++ = cols[idx+1];
-                *dest++ = cols[idx+0];
-                *dest++ = 255;
-            } 
-            break;
-        case PALFMT_RGBA:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *4;
-                ++src;
-                *dest++ = cols[idx+2];
-                *dest++ = cols[idx+1];
-                *dest++ = cols[idx+0];
-                *dest++ = cols[idx+3];
-            } 
-            break;
-        default:
-            assert(false);
-            break;
+    unsigned int x;
+    for (x = 0; x < w; ++x) {
+        unsigned int idx = 4 * (int)(*src++);
+        *dest++ = rgba[idx+0];
+        *dest++ = rgba[idx+1];
+        *dest++ = rgba[idx+2];
+        *dest++ = rgba[idx+3];
     }
 }
 
-static void cvt_u8INDEX_u8ALPHA( const uint8_t* src, uint8_t* dest, int w, const void* pal_data, ImFmt pal_fmt)
+static void cvt_u8INDEX_u8ARGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned nrgba, const uint8_t* rgba)
 {
-    int x;
-    const uint8_t* cols = (const uint8_t*)pal_data;
-    switch (pal_fmt)
-    {
-        case PALFMT_RGB:
-            // BONKERS.
-            for (x=0; x<w; ++x) {
-                *dest++ = 255;
-            } 
-            break;
-        case PALFMT_RGBA:
-            for (x=0; x<w; ++x) {
-                int idx = ((int)*src ) *4;
-                ++src;
-                *dest++ = cols[idx+3];
-            } 
-            break;
-        default:
-            assert(false);
-            break;
+    unsigned int x;
+    for (x = 0; x < w; ++x) {
+        unsigned int idx = ((int)*src) * 4;
+        ++src;
+        *dest++ = rgba[idx+1];
+        *dest++ = rgba[idx+2];
+        *dest++ = rgba[idx+3];
+        *dest++ = rgba[idx+0];
     }
 }
 
 
-im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, ImDatatype destDT )
+static void cvt_u8INDEX_u8BGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned nrgba, const uint8_t* rgba)
 {
-    im_convert_fn fn = NULL;
+    unsigned int x;
+    for (x = 0; x < w; ++x) {
+        unsigned int idx = ((int)*src) * 4;
+        ++src;
+        *dest++ = rgba[idx+2];
+        *dest++ = rgba[idx+1];
+        *dest++ = rgba[idx+0];
+    } 
+}
 
-    if (srcDT != DT_U8 || destDT != DT_U8) {
-        return NULL;
-    }
+static void cvt_u8INDEX_u8BGRA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x = 0; x < w; ++x) {
+        unsigned int idx = ((int)*src) * 4;
+        ++src;
+        *dest++ = rgba[idx+2];
+        *dest++ = rgba[idx+1];
+        *dest++ = rgba[idx+0];
+        *dest++ = rgba[idx+3];
+    } 
+}
 
-    switch (srcFmt) {
-        case FMT_RGB:
-            switch (destFmt) {
-                case FMT_RGB: fn=cvt_u8RGB_u8RGB; break;
-                case FMT_RGBA: fn=cvt_u8RGB_u8RGBA; break;
-                case FMT_BGR: fn=cvt_u8RGB_u8BGR; break;
-                case FMT_BGRA: fn=cvt_u8RGB_u8BGRA; break;
-                case FMT_COLOUR_INDEX: break;
-                case FMT_ALPHA:  fn=cvt_u8RGB_u8ALPHA; break;
-                case FMT_LUMINANCE: break;  //TODO
-                default: break;
-            }
-            break;
-        case FMT_RGBA:
-            switch (destFmt) {
-                case FMT_RGB: fn=cvt_u8RGBA_u8RGB; break;
-                case FMT_RGBA: fn=cvt_u8RGBA_u8RGBA; break;
-                case FMT_BGR: fn=cvt_u8RGBA_u8BGR; break;
-                case FMT_BGRA: fn=cvt_u8RGBA_u8BGRA; break;
-                case FMT_COLOUR_INDEX: break;
-                case FMT_ALPHA:  fn=cvt_u8RGBA_u8ALPHA; break;
-                case FMT_LUMINANCE: break;  //TODO
-                default: break;
-            }
-            break;
-        case FMT_BGR:
-            switch (destFmt) {
-                case FMT_RGB: fn=cvt_u8BGR_u8RGB; break;
-                case FMT_RGBA: fn=cvt_u8BGR_u8RGBA; break;
-                case FMT_BGR: fn=cvt_u8BGR_u8BGR; break;
-                case FMT_BGRA: fn=cvt_u8BGR_u8BGRA; break;
-                case FMT_COLOUR_INDEX: break;
-                case FMT_ALPHA:  fn=cvt_u8BGR_u8ALPHA; break;
-                case FMT_LUMINANCE: break;  //TODO
-                default: break;
-            }
-            break;
-        case FMT_BGRA:
-            switch (destFmt) {
-                case FMT_RGB: fn=cvt_u8BGRA_u8RGB; break;
-                case FMT_RGBA: fn=cvt_u8BGRA_u8RGBA; break;
-                case FMT_BGR: fn=cvt_u8BGRA_u8BGR; break;
-                case FMT_BGRA: fn=cvt_u8BGRA_u8BGRA; break;
-                case FMT_COLOUR_INDEX: break;
-                case FMT_ALPHA:  fn=cvt_u8BGRA_u8ALPHA; break;
-                case FMT_LUMINANCE: break;  //TODO
-                default: break;
-            }
-            break;
-        case FMT_ALPHA:
-            switch (destFmt) {
-                case FMT_RGB: fn=cvt_u8ALPHA_u8RGB; break;
-                case FMT_RGBA: fn=cvt_u8ALPHA_u8RGBA; break;
-                case FMT_BGR: fn=cvt_u8ALPHA_u8BGR; break;
-                case FMT_BGRA: fn=cvt_u8ALPHA_u8BGRA; break;
-                case FMT_COLOUR_INDEX: break;
-                case FMT_ALPHA:  fn=cvt_u8ALPHA_u8ALPHA; break;
-                case FMT_LUMINANCE: break;  //TODO
-                default: break;
-            }
-            break;
-        default:
-            break;
-    }
-    return fn;
+static void cvt_u8INDEX_u8ABGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x = 0; x < w; ++x) {
+        unsigned int idx = ((int)*src) * 4;
+        ++src;
+        *dest++ = rgba[idx+3];
+        *dest++ = rgba[idx+2];
+        *dest++ = rgba[idx+1];
+        *dest++ = rgba[idx+0];
+    } 
 }
 
 
-/*  */
-static im_img* convert_direct( const im_img* srcImg, ImFmt destFmt, ImDatatype destDatatype )
+static void cvt_u8INDEX_u8ALPHA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned nrgba, const uint8_t* rgba)
 {
-    im_img* destImg = NULL;
-
-    im_convert_fn fn = pick_convert_fn(srcImg->format, srcImg->datatype, destFmt, destDatatype);
-
-    if (fn==NULL) {
-        return NULL;
+    unsigned int x;
+    for (x = 0; x < w; ++x) {
+        unsigned int idx = ((int)*src) * 4;
+        ++src;
+        *dest++ = rgba[idx+3];
     }
-
-
-    // convert!
-    destImg = im_img_new(srcImg->w, srcImg->h, srcImg->d,  destFmt, destDatatype);
-    if (destImg) {
-        int d,y;
-        const uint8_t* srcLine = im_img_row(srcImg,0);
-        uint8_t* destLine = im_img_row(destImg,0);
-        for (d=0; d<srcImg->d; ++d) {
-            for (y=0; y<srcImg->h; ++y) {
-                fn( srcLine, destLine, srcImg->w);
-                destLine += destImg->pitch;
-                srcLine += srcImg->pitch;
-            }
-        }
-    }
-    return destImg;
 }
 
 
-/* RGB -> whatever */
-
-static void cvt_u8RGB_u8RGB( const uint8_t* src, uint8_t* dest, int w)
+/*******************
+ * RGB -> whatever
+ */
+static void cvt_u8RGB_u8RGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     memcpy(dest, src, w*3);
 }
 
-static void cvt_u8RGB_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGB_u8RGBA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[0];
         *dest++ = src[1];
@@ -391,9 +119,22 @@ static void cvt_u8RGB_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8RGB_u8BGR( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGB_u8ARGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = 255;
+        *dest++ = src[0];
+        *dest++ = src[1];
+        *dest++ = src[2];
+        src += 3;
+    } 
+}
+
+
+static void cvt_u8RGB_u8BGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[2];
         *dest++ = src[1];
@@ -402,9 +143,9 @@ static void cvt_u8RGB_u8BGR( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8RGB_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGB_u8BGRA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[2];
         *dest++ = src[1];
@@ -414,10 +155,23 @@ static void cvt_u8RGB_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8RGB_u8ALPHA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGB_u8ABGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = 255;
+        *dest++ = src[2];
+        *dest++ = src[1];
+        *dest++ = src[0];
+        src += 3;
+    } 
+}
+
+
+static void cvt_u8RGB_u8ALPHA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     // this is just stupid :-)
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = 255;
     } 
@@ -425,9 +179,9 @@ static void cvt_u8RGB_u8ALPHA( const uint8_t* src, uint8_t* dest, int w)
 
 /* RGBA -> whatever */
 
-static void cvt_u8RGBA_u8RGB( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGBA_u8RGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[0];
         *dest++ = src[1];
@@ -436,14 +190,26 @@ static void cvt_u8RGBA_u8RGB( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8RGBA_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGBA_u8RGBA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     memcpy(dest, src, w*4);
 }
 
-static void cvt_u8RGBA_u8BGR( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGBA_u8ARGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[3];
+        *dest++ = src[0];
+        *dest++ = src[1];
+        *dest++ = src[2];
+        src += 4;
+    } 
+}
+
+static void cvt_u8RGBA_u8BGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[2];
         *dest++ = src[1];
@@ -452,9 +218,9 @@ static void cvt_u8RGBA_u8BGR( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8RGBA_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGBA_u8BGRA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[2];
         *dest++ = src[1];
@@ -464,21 +230,117 @@ static void cvt_u8RGBA_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8RGBA_u8ALPHA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8RGBA_u8ABGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[3];
+        *dest++ = src[2];
+        *dest++ = src[1];
+        *dest++ = src[0];
+        src += 4;
+    } 
+}
+
+static void cvt_u8RGBA_u8ALPHA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[3];
         src += 4;
     } 
 }
 
+/****************
+ * ARGB -> whatever
+ */
 
-/* BGR -> whatever */
-
-static void cvt_u8BGR_u8RGB( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8ARGB_u8RGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[1];
+        *dest++ = src[2];
+        *dest++ = src[3];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ARGB_u8RGBA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[1];
+        *dest++ = src[2];
+        *dest++ = src[3];
+        *dest++ = src[0];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ARGB_u8ARGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[0];
+        *dest++ = src[1];
+        *dest++ = src[2];
+        *dest++ = src[3];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ARGB_u8BGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[3];
+        *dest++ = src[2];
+        *dest++ = src[1];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ARGB_u8BGRA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[3];
+        *dest++ = src[2];
+        *dest++ = src[1];
+        *dest++ = src[0];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ARGB_u8ABGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[0];
+        *dest++ = src[3];
+        *dest++ = src[2];
+        *dest++ = src[1];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ARGB_u8ALPHA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[0];
+        src += 4;
+    } 
+}
+
+/*****************
+ * BGR -> whatever
+ */
+
+static void cvt_u8BGR_u8RGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[2];
         *dest++ = src[1];
@@ -487,9 +349,9 @@ static void cvt_u8BGR_u8RGB( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8BGR_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGR_u8RGBA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[2];
         *dest++ = src[1];
@@ -499,14 +361,27 @@ static void cvt_u8BGR_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8BGR_u8BGR( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGR_u8ARGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = 255;
+        *dest++ = src[2];
+        *dest++ = src[1];
+        *dest++ = src[0];
+        src += 3;
+    } 
+}
+
+
+static void cvt_u8BGR_u8BGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     memcpy(dest,src,w*3);
 }
 
-static void cvt_u8BGR_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGR_u8BGRA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = *src++;
         *dest++ = *src++;
@@ -515,21 +390,35 @@ static void cvt_u8BGR_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8BGR_u8ALPHA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGR_u8ABGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = 255;
+        *dest++ = *src++;
+        *dest++ = *src++;
+        *dest++ = *src++;
+    } 
+}
+
+
+static void cvt_u8BGR_u8ALPHA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     // this is just stupid :-)
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = 255;
     } 
 }
 
 
-/* BGRA -> whatever */
+/******************
+ * BGRA -> whatever
+ */
 
-static void cvt_u8BGRA_u8RGB( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGRA_u8RGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[2];
         *dest++ = src[1];
@@ -538,9 +427,9 @@ static void cvt_u8BGRA_u8RGB( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8BGRA_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGRA_u8RGBA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[2];
         *dest++ = src[1];
@@ -550,9 +439,22 @@ static void cvt_u8BGRA_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8BGRA_u8BGR( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGRA_u8ARGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[3];
+        *dest++ = src[2];
+        *dest++ = src[1];
+        *dest++ = src[0];
+        src += 4;
+    } 
+}
+
+
+static void cvt_u8BGRA_u8BGR( const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = *src++;
         *dest++ = *src++;
@@ -561,30 +463,124 @@ static void cvt_u8BGRA_u8BGR( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8BGRA_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGRA_u8BGRA( const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     memcpy(dest,src,w*4);
 }
 
-static void cvt_u8BGRA_u8ALPHA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8BGRA_u8ABGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[3];
+        *dest++ = src[0];
+        *dest++ = src[1];
+        *dest++ = src[2];
+        src += 4;
+    } 
+}
+
+
+static void cvt_u8BGRA_u8ALPHA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     // this is just stupid :-)
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = src[3];
         src += 4;
     } 
 }
 
+/****************
+ * ABGR -> whatever
+ */
 
+static void cvt_u8ABGR_u8RGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[3];
+        *dest++ = src[2];
+        *dest++ = src[1];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ABGR_u8RGBA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[3];
+        *dest++ = src[2];
+        *dest++ = src[1];
+        *dest++ = src[0];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ABGR_u8ARGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[0];
+        *dest++ = src[3];
+        *dest++ = src[2];
+        *dest++ = src[1];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ABGR_u8BGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[1];
+        *dest++ = src[2];
+        *dest++ = src[3];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ABGR_u8BGRA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[1];
+        *dest++ = src[2];
+        *dest++ = src[3];
+        *dest++ = src[0];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ABGR_u8ABGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[0];
+        *dest++ = src[1];
+        *dest++ = src[2];
+        *dest++ = src[3];
+        src += 4;
+    } 
+}
+
+static void cvt_u8ABGR_u8ALPHA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = src[0];
+        src += 4;
+    } 
+}
 
 
 /* ALPHA -> whatever */
 
-static void cvt_u8ALPHA_u8RGB( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8ALPHA_u8RGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     // silly.
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = 0;
         *dest++ = 0;
@@ -592,9 +588,9 @@ static void cvt_u8ALPHA_u8RGB( const uint8_t* src, uint8_t* dest, int w)
    } 
 }
 
-static void cvt_u8ALPHA_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8ALPHA_u8RGBA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = 0;
         *dest++ = 0;
@@ -603,10 +599,21 @@ static void cvt_u8ALPHA_u8RGBA( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8ALPHA_u8BGR( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8ALPHA_u8ARGB(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = *src++;
+        *dest++ = 0;
+        *dest++ = 0;
+        *dest++ = 0;
+    } 
+}
+
+static void cvt_u8ALPHA_u8BGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     // silly.
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = 0;
         *dest++ = 0;
@@ -614,9 +621,9 @@ static void cvt_u8ALPHA_u8BGR( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8ALPHA_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8ALPHA_u8BGRA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
-    int x;
+    unsigned int x;
     for (x=0; x<w; ++x) {
         *dest++ = 0;
         *dest++ = 0;
@@ -625,9 +632,183 @@ static void cvt_u8ALPHA_u8BGRA( const uint8_t* src, uint8_t* dest, int w)
     } 
 }
 
-static void cvt_u8ALPHA_u8ALPHA( const uint8_t* src, uint8_t* dest, int w)
+static void cvt_u8ALPHA_u8ABGR(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
+{
+    unsigned int x;
+    for (x=0; x<w; ++x) {
+        *dest++ = *src++;
+        *dest++ = 0;
+        *dest++ = 0;
+        *dest++ = 0;
+    } 
+}
+
+static void cvt_u8ALPHA_u8ALPHA(const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba)
 {
     memcpy(dest,src,w*1);
 }
 
+
+
+/*
+ * Note: we treat any pad byte (X) the same as the alpha byte (A) to save
+ * a few conversion functions.
+ */
+
+im_convert_fn i_pick_convert_fn(ImFmt srcFmt, ImFmt destFmt)
+{
+    im_convert_fn fn = NULL;
+
+    switch (srcFmt) {
+        case IM_FMT_INDEX8:
+            switch (destFmt) {
+                case IM_FMT_RGB: fn = cvt_u8INDEX_u8RGB; break;
+                case IM_FMT_RGBA: fn = cvt_u8INDEX_u8RGBA; break;
+                case IM_FMT_RGBX: fn = cvt_u8INDEX_u8RGBA; break;
+                case IM_FMT_ARGB: fn = cvt_u8INDEX_u8ARGB; break;
+                case IM_FMT_XRGB: fn = cvt_u8INDEX_u8ARGB; break;
+                case IM_FMT_BGR: fn = cvt_u8INDEX_u8BGR; break;
+                case IM_FMT_BGRA: fn = cvt_u8INDEX_u8BGRA; break;
+                case IM_FMT_BGRX: fn = cvt_u8INDEX_u8BGRA; break;
+                case IM_FMT_ABGR: fn = cvt_u8INDEX_u8ABGR; break;
+                case IM_FMT_XBGR: fn = cvt_u8INDEX_u8ABGR; break;
+                case IM_FMT_INDEX8: break;   // TODO: just pick closest colours?
+                case IM_FMT_ALPHA: fn = cvt_u8INDEX_u8ALPHA; break;
+                case IM_FMT_LUMINANCE: break;  //TODO
+                default: break;
+            }
+            break;
+        case IM_FMT_RGB:
+            switch (destFmt) {
+                case IM_FMT_RGB: fn = cvt_u8RGB_u8RGB; break;
+                case IM_FMT_RGBA: fn = cvt_u8RGB_u8RGBA; break;
+                case IM_FMT_RGBX: fn = cvt_u8RGB_u8RGBA; break;
+                case IM_FMT_ARGB: fn = cvt_u8RGB_u8ARGB; break;
+                case IM_FMT_XRGB: fn = cvt_u8RGB_u8ARGB; break;
+                case IM_FMT_BGR: fn = cvt_u8RGB_u8BGR; break;
+                case IM_FMT_BGRA: fn = cvt_u8RGB_u8BGRA; break;
+                case IM_FMT_BGRX: fn = cvt_u8RGB_u8BGRA; break;
+                case IM_FMT_ABGR: fn = cvt_u8RGB_u8ABGR; break;
+                case IM_FMT_XBGR: fn = cvt_u8RGB_u8ABGR; break;
+                case IM_FMT_INDEX8: break;
+                case IM_FMT_ALPHA: fn = cvt_u8RGB_u8ALPHA; break;
+                case IM_FMT_LUMINANCE: break;  //TODO
+                default: break;
+            }
+            break;
+        case IM_FMT_RGBA:
+            switch (destFmt) {
+                case IM_FMT_RGB: fn = cvt_u8RGBA_u8RGB; break;
+                case IM_FMT_RGBA: fn = cvt_u8RGBA_u8RGBA; break;
+                case IM_FMT_RGBX: fn = cvt_u8RGBA_u8RGBA; break;
+                case IM_FMT_ARGB: fn = cvt_u8RGBA_u8ARGB; break;
+                case IM_FMT_XRGB: fn = cvt_u8RGBA_u8ARGB; break;
+                case IM_FMT_BGR: fn = cvt_u8RGBA_u8BGR; break;
+                case IM_FMT_BGRA: fn = cvt_u8RGBA_u8BGRA; break;
+                case IM_FMT_BGRX: fn = cvt_u8RGBA_u8BGRA; break;
+                case IM_FMT_ABGR: fn = cvt_u8RGBA_u8ABGR; break;
+                case IM_FMT_XBGR: fn = cvt_u8RGBA_u8ABGR; break;
+                case IM_FMT_INDEX8: break;
+                case IM_FMT_ALPHA: fn = cvt_u8RGBA_u8ALPHA; break;
+                case IM_FMT_LUMINANCE: break;  //TODO
+                default: break;
+            }
+            break;
+        case IM_FMT_ARGB:
+        case IM_FMT_XRGB:
+            switch (destFmt) {
+                case IM_FMT_RGB: fn = cvt_u8ARGB_u8RGB; break;
+                case IM_FMT_RGBA: fn = cvt_u8ARGB_u8RGBA; break;
+                case IM_FMT_RGBX: fn = cvt_u8ARGB_u8RGBA; break;
+                case IM_FMT_ARGB: fn = cvt_u8ARGB_u8ARGB; break;
+                case IM_FMT_XRGB: fn = cvt_u8ARGB_u8ARGB; break;
+                case IM_FMT_BGR: fn = cvt_u8ARGB_u8BGR; break;
+                case IM_FMT_BGRA: fn = cvt_u8ARGB_u8BGRA; break;
+                case IM_FMT_BGRX: fn = cvt_u8ARGB_u8BGRA; break;
+                case IM_FMT_ABGR: fn = cvt_u8ARGB_u8ABGR; break;
+                case IM_FMT_XBGR: fn = cvt_u8ARGB_u8ABGR; break;
+                case IM_FMT_INDEX8: break;
+                case IM_FMT_ALPHA: fn = cvt_u8ARGB_u8ALPHA; break;
+                case IM_FMT_LUMINANCE: break;  //TODO
+                default: break;
+            }
+            break;
+        case IM_FMT_BGR:
+            switch (destFmt) {
+                case IM_FMT_RGB: fn = cvt_u8BGR_u8RGB; break;
+                case IM_FMT_RGBA: fn = cvt_u8BGR_u8RGBA; break;
+                case IM_FMT_RGBX: fn = cvt_u8BGR_u8RGBA; break;
+                case IM_FMT_ARGB: fn = cvt_u8BGR_u8ARGB; break;
+                case IM_FMT_XRGB: fn = cvt_u8BGR_u8ARGB; break;
+                case IM_FMT_BGR: fn = cvt_u8BGR_u8BGR; break;
+                case IM_FMT_BGRA: fn = cvt_u8BGR_u8BGRA; break;
+                case IM_FMT_BGRX: fn = cvt_u8BGR_u8BGRA; break;
+                case IM_FMT_ABGR: fn = cvt_u8BGR_u8ABGR; break;
+                case IM_FMT_XBGR: fn = cvt_u8BGR_u8ABGR; break;
+                case IM_FMT_INDEX8: break;
+                case IM_FMT_ALPHA: fn = cvt_u8BGR_u8ALPHA; break;
+                case IM_FMT_LUMINANCE: break;  //TODO
+                default: break;
+            }
+            break;
+        case IM_FMT_BGRA:
+            switch (destFmt) {
+                case IM_FMT_RGB: fn = cvt_u8BGRA_u8RGB; break;
+                case IM_FMT_RGBA: fn = cvt_u8BGRA_u8RGBA; break;
+                case IM_FMT_RGBX: fn = cvt_u8BGRA_u8RGBA; break;
+                case IM_FMT_ARGB: fn = cvt_u8BGRA_u8ARGB; break;
+                case IM_FMT_XRGB: fn = cvt_u8BGRA_u8ARGB; break;
+                case IM_FMT_BGR: fn = cvt_u8BGRA_u8BGR; break;
+                case IM_FMT_BGRA: fn = cvt_u8BGRA_u8BGRA; break;
+                case IM_FMT_BGRX: fn = cvt_u8BGRA_u8BGRA; break;
+                case IM_FMT_ABGR: fn = cvt_u8BGRA_u8ABGR; break;
+                case IM_FMT_XBGR: fn = cvt_u8BGRA_u8ABGR; break;
+                case IM_FMT_INDEX8: break;
+                case IM_FMT_ALPHA: fn = cvt_u8BGRA_u8ALPHA; break;
+                case IM_FMT_LUMINANCE: break;  //TODO
+                default: break;
+            }
+            break;
+        case IM_FMT_ABGR:
+        case IM_FMT_XBGR:
+            switch (destFmt) {
+                case IM_FMT_RGB: fn = cvt_u8ABGR_u8RGB; break;
+                case IM_FMT_RGBA: fn = cvt_u8ABGR_u8RGBA; break;
+                case IM_FMT_RGBX: fn = cvt_u8ABGR_u8RGBA; break;
+                case IM_FMT_ARGB: fn = cvt_u8ABGR_u8ARGB; break;
+                case IM_FMT_XRGB: fn = cvt_u8ABGR_u8ARGB; break;
+                case IM_FMT_BGR: fn = cvt_u8ABGR_u8BGR; break;
+                case IM_FMT_BGRA: fn = cvt_u8ABGR_u8BGRA; break;
+                case IM_FMT_BGRX: fn = cvt_u8ABGR_u8BGRA; break;
+                case IM_FMT_ABGR: fn = cvt_u8ABGR_u8ABGR; break;
+                case IM_FMT_XBGR: fn = cvt_u8ABGR_u8ABGR; break;
+                case IM_FMT_INDEX8: break;
+                case IM_FMT_ALPHA: fn = cvt_u8ABGR_u8ALPHA; break;
+                case IM_FMT_LUMINANCE: break;  //TODO
+                default: break;
+            }
+            break;
+        case IM_FMT_ALPHA:
+            switch (destFmt) {
+                case IM_FMT_RGB: fn = cvt_u8ALPHA_u8RGB; break;
+                case IM_FMT_RGBA: fn = cvt_u8ALPHA_u8RGBA; break;
+                case IM_FMT_RGBX: fn = cvt_u8ALPHA_u8RGBA; break;
+                case IM_FMT_ARGB: fn = cvt_u8ALPHA_u8ARGB; break;
+                case IM_FMT_XRGB: fn = cvt_u8ALPHA_u8ARGB; break;
+                case IM_FMT_BGR: fn = cvt_u8ALPHA_u8BGR; break;
+                case IM_FMT_BGRA: fn = cvt_u8ALPHA_u8BGRA; break;
+                case IM_FMT_BGRX: fn = cvt_u8ALPHA_u8BGRA; break;
+                case IM_FMT_ABGR: fn = cvt_u8ALPHA_u8ABGR; break;
+                case IM_FMT_XBGR: fn = cvt_u8ALPHA_u8ABGR; break;
+                case IM_FMT_INDEX8: break;
+                case IM_FMT_ALPHA: fn = cvt_u8ALPHA_u8ALPHA; break;
+                case IM_FMT_LUMINANCE: break;  //TODO
+                default: break;
+            }
+            break;
+        default:
+            break;
+    }
+    return fn;
+}
 

@@ -967,8 +967,8 @@ static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data
         return NULL;
     }
 
-    // TODO: handle 24 and 32-plane images (FMT_RGB and FMT_RGBA)
-    im_img* img = im_img_new(bmhd->w, bmhd->h, 1, FMT_COLOUR_INDEX, DT_U8);
+    // TODO: handle 24 and 32-plane images (IM_FMT_RGB and IM_FMT_RGBA)
+    im_img* img = im_img_new(bmhd->w, bmhd->h, 1, IM_FMT_INDEX8);
     if( !img) {
         *err = ERR_NOMEM;
         return NULL;
@@ -1009,7 +1009,7 @@ static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data
     // current frame - the caller has already handled it)
     // TODO: pad out to at least 2^nPlanes entries
     if (cmap_data) {
-        if( !im_img_pal_set(img, PALFMT_RGB, cmap_len/3, cmap_data) ) {
+        if( !im_img_pal_set(img, IM_FMT_RGB, cmap_len/3, cmap_data) ) {
             *err = ERR_NOMEM;
             im_img_free(img);
             return NULL;

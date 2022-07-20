@@ -13,10 +13,10 @@
  */
 
 // signature for a fn to convert w pixels
-typedef void (*im_convert_fn)( const uint8_t* src, uint8_t* dest, int w);
+typedef void (*im_convert_fn)( const uint8_t* src, uint8_t* dest, unsigned int w, unsigned int nrgba, const uint8_t* rgba);
 
 // pick a conversion fn
-extern im_convert_fn pick_convert_fn( ImFmt srcFmt, ImDatatype srcDT, ImFmt destFmt, ImDatatype destDT );
+extern im_convert_fn i_pick_convert_fn(ImFmt srcFmt, ImFmt destFmt);
 
 
 /***********
@@ -62,8 +62,8 @@ typedef struct im_writer {
     im_convert_fn row_cvt_fn;
 
     // Palette - set by im_set_palette(), persists between frames.
+    // Always stored here in IM_FMT_RGBA format.
     unsigned int pal_num_colours;
-    ImFmt pal_fmt;
     uint8_t* pal_data;
 } im_writer;
 

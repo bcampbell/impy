@@ -157,24 +157,17 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
     }
     im_imginfo info;
     while (im_get_img(rdr, &info)) {
-
         int d = 0;
         Uint32 f = 0;
-        switch (info.fmt) {
-            case FMT_RGB: d = 24; f = SDL_PIXELFORMAT_RGB24; break;
-            case FMT_RGBA: d = 32; f = SDL_PIXELFORMAT_RGBA32; break;
-            case FMT_COLOUR_INDEX: d = 8; f = SDL_PIXELFORMAT_INDEX8; break;
-            default: break;
-        }
-        if (d==0) {
-            // unsupported pixelformat...
-            goto bailout;
-        }
+        // let impy sort out pixelformat and palettes and just give us RGBA
+        im_reader_set_fmt(rdr, IM_FMT_RGBA);
+        d = 32;
+        f = SDL_PIXELFORMAT_RGBA32;
         surf = SDL_CreateRGBSurfaceWithFormat(0, info.w, info.h, d, f);
         if (!surf) {
             goto bailout;
         }
-
+#if 0
         // Load in the palette, if any.
         if (info.pal_num_colours>0 && surf->format->palette) {
             SDL_Color tmp[256];
@@ -193,6 +186,7 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
             }
             SDL_SetPaletteColors(surf->format->palette, tmp, 0, ncol);
         }
+#endif
 
         //printf("w=%d d=%d surf->pitch=%d\n", info.w, d, surf->pitch);
         im_read_rows(rdr, info.h, surf->pixels);

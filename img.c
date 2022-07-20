@@ -20,8 +20,8 @@ bool im_img_pal_equal(const im_img* a, const im_img* b)
         return false;
     }
     switch (a->pal_fmt) {
-        case PALFMT_RGB: nbytes=3; break;
-        case PALFMT_RGBA: nbytes=4; break;
+        case IM_FMT_RGB: nbytes=3; break;
+        case IM_FMT_RGBA: nbytes=4; break;
         default: return false;
     }
     if(memcmp( a->pal_data, b->pal_data, a->pal_num_colours*nbytes) != 0 ) {
@@ -65,11 +65,11 @@ bool im_img_pal_read( im_img* img, int first_colour, int num_colours, ImFmt dest
 // helper func - copy/convert palette colours
 static void copy_pal_range( ImFmt src_fmt, const uint8_t* src, ImFmt dest_fmt, uint8_t *dest, int first_colour, int num_colours) {
 
-    if (src_fmt==PALFMT_RGB && dest_fmt==PALFMT_RGB) {
-        memcpy(dest + (first_colour*3), src, num_colours*3);
-    } else if (src_fmt==PALFMT_RGBA && dest_fmt==PALFMT_RGBA) {
-        memcpy(dest + (first_colour*4), src, num_colours*4);
-    } else if (src_fmt == PALFMT_RGB && dest_fmt==PALFMT_RGBA) {
+    if (src_fmt == IM_FMT_RGB && dest_fmt == IM_FMT_RGB) {
+        memcpy(dest + (first_colour * 3), src, num_colours * 3);
+    } else if (src_fmt == IM_FMT_RGBA && dest_fmt == IM_FMT_RGBA) {
+        memcpy(dest + (first_colour * 4), src, num_colours * 4);
+    } else if (src_fmt == IM_FMT_RGB && dest_fmt == IM_FMT_RGBA) {
         int i;
         dest += 4*first_colour;
         for (i=0; i<num_colours; ++i) {
@@ -78,7 +78,7 @@ static void copy_pal_range( ImFmt src_fmt, const uint8_t* src, ImFmt dest_fmt, u
             *dest++ = *src++;
             *dest++ = 255;
         }
-    } else if (src_fmt == PALFMT_RGBA && dest_fmt==PALFMT_RGB) {
+    } else if (src_fmt == IM_FMT_RGBA && dest_fmt == IM_FMT_RGB) {
         int i;
         dest += 3*first_colour;
         for (i=0; i<num_colours; ++i) {
@@ -98,11 +98,10 @@ im_img* im_img_clone(const im_img* src_img)
     int h = src_img->h;
     int d = src_img->d;
     ImFmt fmt = src_img->format;
-    ImDatatype dt = src_img->datatype;
 
     size_t bytesperline = w * im_fmt_bytesperpixel(fmt);
     int y,z;
-    im_img* dest_img = im_img_new(w,h,d,fmt,dt);
+    im_img* dest_img = im_img_new(w,h,d,fmt);
     if (!dest_img) {
         return NULL;
     }
@@ -127,7 +126,7 @@ im_img* im_img_clone(const im_img* src_img)
     return dest_img;
 }
 
-im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
+im_img* im_img_new(int w, int h, int d, ImFmt fmt)
 {
     im_img* foo;
     int bytesPerPixel;
@@ -151,7 +150,6 @@ im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
     foo->d = d;
 
     foo->format = fmt;
-    foo->datatype = datatype;
     foo->pitch = bytesPerPixel * foo->w;
     foo->pixel_data = imalloc(foo->h * foo->pitch * foo->d);
     if (!foo->pixel_data) {
@@ -162,7 +160,7 @@ im_img* im_img_new(int w, int h, int d, ImFmt fmt, ImDatatype datatype)
     // memset(foo->pixel_data, 0xdd, foo->height * foo->pitch * foo->depth);
 
     foo->pal_num_colours = 0;
-    foo->pal_fmt = PALFMT_RGB;
+    foo->pal_fmt = IM_FMT_RGB;
     foo->pal_data = 0;
 
     foo->x_offset = 0;
@@ -189,8 +187,8 @@ bool im_img_pal_set( im_img* img, ImFmt fmt, int ncolours, const void* data)
     im_img* foo = img;
     int colsize;
     switch (fmt) {
-        case PALFMT_RGB: colsize=3; break;
-        case PALFMT_RGBA: colsize=4; break;
+        case IM_FMT_RGB: colsize=3; break;
+        case IM_FMT_RGBA: colsize=4; break;
         default: return false;
     }
     if( foo->pal_fmt != fmt || foo->pal_num_colours != ncolours ) {

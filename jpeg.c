@@ -165,7 +165,7 @@ im_img* iread_jpeg_image( im_in* rdr, ImErr* err )
         *err = ERR_UNSUPPORTED;
         goto cleanup;
     }
-    image = im_img_new( w, h, 1, FMT_RGB, DT_U8);
+    image = im_img_new( w, h, 1, IM_FMT_RGB);
 
     int y;
     for (y=0; y<h; ++y) {

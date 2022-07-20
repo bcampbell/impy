@@ -125,7 +125,7 @@ static void enter_READSTATE_BODY(im_reader* rdr)
         return;
     }
 
-    rdr->row_cvt_fn = pick_convert_fn(rdr->curr.fmt, DT_U8, rdr->external_fmt, DT_U8); 
+    rdr->row_cvt_fn = i_pick_convert_fn(rdr->curr.fmt, rdr->external_fmt); 
     if (rdr->row_cvt_fn == NULL) {
         rdr->err = ERR_NOCONV;
         return;
@@ -166,15 +166,16 @@ void im_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf)
         // Pixelconverting. Read one row at a time into rowbuf and convert.
         for (i=0; i<num_rows; ++i) {
             rdr->handler->read_rows(rdr, 1, rdr->rowbuf);
-            rdr->row_cvt_fn(rdr->rowbuf, buf, rdr->curr.w);
+            rdr->row_cvt_fn(rdr->rowbuf, buf, rdr->curr.w, rdr->curr.pal_num_colours, rdr->pal_data);
             buf += im_fmt_bytesperpixel(rdr->external_fmt) * rdr->curr.w;
+            rdr->rows_read++;
         }
     } else {
         // No conversion required.
         rdr->handler->read_rows(rdr, num_rows, buf);
+        rdr->rows_read += num_rows;
     }
 
-    rdr->rows_read += num_rows;
     // Read them all?
     if (rdr->rows_read == rdr->curr.h) {
         rdr->state = READSTATE_READY;
@@ -196,13 +197,17 @@ void im_read_palette(im_reader* rdr, ImFmt pal_fmt, uint8_t* buf)
         rdr->err = ERR_NO_PALETTE;
         return;
     }
+    if (!im_fmt_has_rgb(pal_fmt)) {
+        rdr->err = ERR_NOCONV;  // Not a suitable format for a palette.
+        return;
+    }
 
-    im_convert_fn cvt_fn = pick_convert_fn(IM_FMT_RGBA, DT_U8, pal_fmt, DT_U8);
+    im_convert_fn cvt_fn = i_pick_convert_fn(IM_FMT_RGBA, pal_fmt);
     if (!cvt_fn) {
         rdr->err = ERR_NOCONV;
         return;
     }
-    cvt_fn(rdr->pal_data, buf, rdr->curr.pal_num_colours);
+    cvt_fn(rdr->pal_data, buf, rdr->curr.pal_num_colours, 0, NULL);
 }
 
 

@@ -69,7 +69,7 @@ im_img* iread_pcx_image( im_in* rdr, ImErr* err )
         int y;
         uint8_t cmap[1 + (256*3)] = {0};
 
-        img = im_img_new( pcx.w, pcx.h, 1, FMT_COLOUR_INDEX, DT_U8);
+        img = im_img_new( pcx.w, pcx.h, 1, IM_FMT_INDEX8);
         if (!img) {
             *err = ERR_NOMEM;
             goto cleanup;
@@ -92,12 +92,12 @@ im_img* iread_pcx_image( im_in* rdr, ImErr* err )
             *err = ERR_MALFORMED;
             goto cleanup;
         }
-        im_img_pal_set(img, PALFMT_RGB, 256, cmap+1);
+        im_img_pal_set(img, IM_FMT_RGB, 256, cmap+1);
 
     } else if (pcx.depth==8 && pcx.planes==3) {
         int y;
 
-        img = im_img_new( pcx.w, pcx.h, 1, FMT_RGB, DT_U8);
+        img = im_img_new( pcx.w, pcx.h, 1, IM_FMT_RGB);
         if (!img) {
             *err = ERR_NOMEM;
             goto cleanup;

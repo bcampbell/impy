@@ -151,7 +151,6 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
     /*********** create image *************/
     {
         ImFmt fmt;
-        ImDatatype dt;
         switch (colourType) {
             case PNG_COLOR_TYPE_RGB:        fmt = IM_FMT_RGB; break;
             case PNG_COLOR_TYPE_RGB_ALPHA:  fmt = IM_FMT_RGBA; break;
@@ -165,15 +164,15 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
         }
 
         if (bitDepth<=8 ) {
-            dt = DT_U8;
+            //
         } else if (bitDepth==16) {
-            dt = DT_U16;
+            png_set_scale_16(png_ptr);
         } else {
             cbDat->err = ERR_UNSUPPORTED;
             png_error(png_ptr, "unsupported color type");
         }
         
-        cbDat->image = im_img_new(width,height,1,fmt,dt);
+        cbDat->image = im_img_new(width,height,1,fmt);
         if (cbDat->image == NULL) {
             cbDat->err = ERR_NOMEM;
             png_error(png_ptr, "im_img_new() failed");
