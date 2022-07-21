@@ -13,11 +13,13 @@ typedef struct bundle {
 SDL_Window *win = NULL;
 SDL_Renderer *ren = NULL;
 bundle *doc = NULL;    // The loaded frame(s).
+SDL_Texture *bg = NULL; // background texture
 
 void show(SDL_Texture* tex);
 void cleanup();
-void bundle_free(bundle *b);
 bundle* bundle_load(SDL_Renderer *renderer, const char *filename);
+void bundle_free(bundle *b);
+SDL_Texture* checkerboard(SDL_Renderer* renderer);
 
 int main( int argc, char* argv[])
 {
@@ -40,7 +42,7 @@ int main( int argc, char* argv[])
     }
 
     ren = SDL_CreateRenderer(win, -1, 0); //SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (ren == 0){
+    if (!ren){
         fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
         cleanup();
     	return 1;
@@ -49,6 +51,8 @@ int main( int argc, char* argv[])
     // This applies at texture creation time... so we'd have to reload textures
     // to switch on the fly.
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "nearest");  // "linear", "best"
+
+    bg = checkerboard(ren);
 
     doc = bundle_load(ren, argv[1]);
     if (doc==NULL || doc->len==0) {
@@ -113,16 +117,39 @@ int main( int argc, char* argv[])
 
 
 
-
+// Redraw the window.
 void show(SDL_Texture* tex)
 {
     int texw, texh;
+    int bgw, bgh;
     if (SDL_QueryTexture(tex,NULL,NULL,&texw, &texh) != 0 ) {
         fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
         return;
     }
-    SDL_RenderSetLogicalSize(ren, texw, texh);
+    if (SDL_QueryTexture(bg,NULL,NULL,&bgw, &bgh) != 0 ) {
+        fprintf(stderr, "ERROR: %s\n", SDL_GetError() );
+        return;
+    }
+    SDL_SetRenderDrawColor(ren, 0x00, 0x00, 0x00, 0xFF);
 	SDL_RenderClear(ren);
+
+    // draw background (scale fixed)
+    SDL_Rect vp;
+    SDL_RenderSetViewport(ren, NULL);
+    SDL_RenderSetScale(ren, 1.0f, 1.0f);
+    SDL_RenderGetViewport(ren, &vp);
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_NONE);
+    int x, y;
+    for (y = vp.y; y < vp.y + vp.h; y += bgh) {
+        for (x = vp.x; x < vp.x + vp.w; x += bgw) {
+            SDL_Rect dest = {x, y, bgw, bgh};
+	        SDL_RenderCopy(ren, bg, NULL, &dest);
+        }
+    }
+
+    // blend main image on top (scaled to fill window)
+    SDL_RenderSetLogicalSize(ren, texw, texh);
+    SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
 	SDL_RenderCopy(ren, tex, NULL, NULL);
 	SDL_RenderPresent(ren);
 }
@@ -132,6 +159,9 @@ void cleanup()
     if (doc) {
         bundle_free(doc);
     }
+    if (bg) {
+        SDL_DestroyTexture(bg);
+    }
     if (ren) {
         SDL_DestroyRenderer(ren);
     }
@@ -140,6 +170,35 @@ void cleanup()
     }
     SDL_Quit();
 }
+
+
+// Generate a checkerboard texture for use as a background
+SDL_Texture* checkerboard(SDL_Renderer* renderer)
+{
+    const int w = 256;
+    const int h = 256;
+    const int s = 16;   // Size of each square.
+    int x,y;
+    SDL_Texture* tx = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, w, h);
+
+    SDL_SetRenderTarget(renderer, tx);
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+    for (y = 0; y < h/s; ++y) {
+        for (x = 0; x < w/s; ++x) {
+            SDL_Rect r = { x*s, y*s, s, s};
+            SDL_RenderFillRect(renderer, &r);
+            if ((x&1) ^ (y&1)) {
+                SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+            } else {
+                SDL_SetRenderDrawColor(renderer, 0xCC, 0xCC, 0xCC, 0xFF);
+            }
+            SDL_RenderFillRect(renderer, &r);
+        }
+    }
+    SDL_SetRenderTarget(renderer, NULL);
+    return tx;
+}
+
 
 
 bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
@@ -224,11 +283,14 @@ bailout:
     return NULL;
 }
 
-void bundle_free(bundle *b) {
-    if (b) {
-        free(b->frames);
-        free(b);
+void bundle_free(bundle *b)
+{
+    int i;
+    for (i = 0; i < b->len; ++i) {
+        SDL_DestroyTexture(b->frames[i]);
     }
+    free(b->frames);
+    free(b);
 }
 
 
