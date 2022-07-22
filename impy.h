@@ -196,12 +196,30 @@ static inline size_t im_write( im_out* w, const void* data, size_t nbytes)
  * filetype stuff
  */
 
+// im_guess_file_format tries to guess the most appropriate file format based
+// on the given filename.
 ImFileFmt im_guess_file_format(const char* filename);
+
 
 /****************
  * API for writing
  */
 
+// im_writer is the handle used for writing out files.
+// The general sequence is:
+//  1. create an im_writer()
+//  2. call im_begin_img() to describe the image properties.
+//  3. call optional extra functions, such as im_set_palette().
+//  4. call im_write_rows one or more times to write the image data.
+//  5. If the format supports it, go back to step 2 to write another image.
+//  6. im_writer_finish() when done.
+//
+// At any point, you can call im_writer_err() to check the error state of the
+// writer. It's safe to call the write functions after an error occurs - they
+// will just act as a no-op.
+// So it's OK to skip error checking just check the final code returned by
+// im_write_finish() to see if the write was successful or not.
+// If an error did occur, there might be partially-written data.
 typedef struct im_writer im_writer;
 
 im_writer* im_writer_open_file(const char *filename, ImErr* err);
@@ -209,7 +227,7 @@ im_writer* im_writer_new(ImFileFmt file_fmt, im_out* out, ImErr* err);
 
 void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt);
 void im_set_palette(im_writer* writer, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
-void im_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data);
+void im_write_rows(im_writer *writer, unsigned int num_rows, const void *data, int stride);
 
 ImErr im_writer_finish(im_writer* writer);
 ImErr im_writer_err(im_writer* writer);
@@ -239,7 +257,7 @@ bool im_get_img(im_reader *reader, im_imginfo *info);
 void im_reader_set_fmt(im_reader* rdr, ImFmt fmt);
 
 ImErr im_reader_err(im_reader *reader);
-void im_read_rows(im_reader *reader, unsigned int num_rows, uint8_t *buf);
+void im_read_rows(im_reader *reader, unsigned int num_rows, void *buf, int stride);
 
 // Fetch the current palette. Assumes buf is big enough for info->pal_num_colours
 // in format pal_fmt.

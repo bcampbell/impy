@@ -7,7 +7,7 @@
 //#include <limits.h>
 
 static bool generic_get_img(im_reader* rdr);
-static void generic_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf);
+static void generic_read_rows(im_reader *rdr, unsigned int num_rows, void* buf, int stride);
 static void generic_reader_finish(im_reader* rdr);
 
 
@@ -94,7 +94,7 @@ static bool generic_get_img(im_reader* rdr)
     return true;
 }
 
-static void generic_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf)
+static void generic_read_rows(im_reader *rdr, unsigned int num_rows, void* buf, int stride)
 {
     generic_reader *gr = (generic_reader*)rdr;
     size_t bytes_per_row;
@@ -107,7 +107,7 @@ static void generic_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* bu
     for (unsigned int row = 0; row < num_rows; ++row) {
         unsigned int y = rdr->rows_read + row;
         memcpy(buf, im_img_row(img, y), bytes_per_row);
-        buf += bytes_per_row;
+        buf += stride;
     }
 }
 

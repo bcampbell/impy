@@ -247,8 +247,7 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
         }
 #endif
 
-        //printf("w=%d d=%d surf->pitch=%d\n", info.w, d, surf->pitch);
-        im_read_rows(rdr, info.h, surf->pixels);
+        im_read_rows(rdr, info.h, surf->pixels, surf->pitch);
 
         SDL_Texture* t = SDL_CreateTextureFromSurface(ren, surf);
         if (!t) {

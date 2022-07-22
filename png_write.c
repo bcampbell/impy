@@ -9,7 +9,7 @@
 
 static void pre_img(im_writer* wr);
 static void emit_header(im_writer* wr);
-static void emit_rows(im_writer* wr, unsigned int num_rows, const uint8_t *data);
+static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, int stride);
 static void post_img(im_writer* wr);
 static void finish(im_writer* wr);
 
@@ -136,13 +136,13 @@ static void emit_header(im_writer* wr)
 }
 
 
-static void emit_rows(im_writer* wr, unsigned int num_rows, const uint8_t *data)
+static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, int stride)
 {
     ipng_writer* pw = (ipng_writer*)wr;
-    int i;
+    unsigned int i;
     for (i = 0; i < num_rows; ++i) {
         png_write_row(pw->png_ptr, (png_const_bytep)data);
-        data += im_fmt_bytesperpixel(wr->fmt) * wr->w;
+        data += stride;
     }
 }
 

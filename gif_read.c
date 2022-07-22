@@ -7,9 +7,9 @@
 #include <limits.h>
 #include <gif_lib.h>
 
-static void gif_reader_finish(im_reader* reader);
-static bool gif_get_img(im_reader* reader);
-static void gif_read_rows(im_reader* reader, unsigned int num_rows, uint8_t* buf);
+static void gif_reader_finish(im_reader *rdr);
+static bool gif_get_img(im_reader *rdr);
+static void gif_read_rows(im_reader *rdr, unsigned int num_rows, void *buf, int stride);
 
 static void read_file_header(im_reader* rdr);
 
@@ -235,7 +235,7 @@ static bool gif_get_img(im_reader* rdr)
     }
 }
 
-static void gif_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf)
+static void gif_read_rows(im_reader *rdr, unsigned int num_rows, void *buf, int stride)
 {
     gif_reader* gr = (gif_reader*)rdr;
     // Read rows out from the accumulator image.
@@ -249,7 +249,7 @@ static void gif_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf)
     for (unsigned int row = 0; row < num_rows; ++row) {
         unsigned int y = rdr->rows_read + row;
         memcpy(buf, im_img_row(img, y), bytes_per_row);
-        buf += bytes_per_row;
+        buf += stride;
     }
 }
 

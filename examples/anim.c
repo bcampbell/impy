@@ -48,10 +48,10 @@ ImErr test_anim(ImFileFmt file_fmt, const char *filename)
     im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
 
     im_set_palette(wr, IM_FMT_RGB, 4, pal);
-    im_write_rows(wr, 4, frame1);
+    im_write_rows(wr, 4, frame1, 4);
 
     im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
-    im_write_rows(wr, 4, frame2);
+    im_write_rows(wr, 4, frame2, 4);
 
     err = im_writer_finish(wr);
     return err;
@@ -68,7 +68,7 @@ ImErr test_indexed_img(ImFileFmt file_fmt, const char *filename)
     im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
 
     im_set_palette(wr, IM_FMT_RGB, 4, pal);
-    im_write_rows(wr, 4, frame1);
+    im_write_rows(wr, 4, frame1, 4);
 
     err = im_writer_finish(wr);
     return err;

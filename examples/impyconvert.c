@@ -37,10 +37,11 @@ int main( int argc, char* argv[])
             im_set_palette(writer, IM_FMT_RGBA, inf.pal_num_colours, buf);
         }
 
-        buf = realloc(buf, inf.w * im_fmt_bytesperpixel(inf.fmt));
+        size_t bytes_per_row = inf.w * im_fmt_bytesperpixel(inf.fmt);
+        buf = realloc(buf, bytes_per_row);
         for (y=0; y < inf.h; ++y) {
-            im_read_rows(reader, 1, buf);
-            im_write_rows(writer, 1, buf);
+            im_read_rows(reader, 1, buf, bytes_per_row);
+            im_write_rows(writer, 1, buf, bytes_per_row);
         }
     }
     free(buf);

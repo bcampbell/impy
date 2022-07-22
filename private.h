@@ -27,7 +27,7 @@ typedef struct write_handler {
     ImFileFmt file_fmt;
     void (*pre_img)(im_writer* writer);
     void (*emit_header)(im_writer* writer);
-    void (*emit_rows)(im_writer* writer, unsigned int num_rows, const uint8_t *data);
+    void (*emit_rows)(im_writer *writer, unsigned int num_rows, const void *data, int stride);
     void (*post_img)(im_writer* writer);
     void (*finish)(im_writer* writer);
 } write_handler;
@@ -49,7 +49,6 @@ typedef struct im_writer {
     unsigned int w;
     unsigned int h;
     ImFmt fmt;
-    size_t bytes_per_row;
 
     // Number of rows from the current frame which have been written out
     // by im_write_rows().
@@ -57,7 +56,6 @@ typedef struct im_writer {
 
     // If we need to pixel-convert internally...
     ImFmt internal_fmt;
-    size_t internal_bytes_per_row;
     // rowbuf and cvt_fn used if internal fmt different from fmt
     uint8_t* rowbuf;
     im_convert_fn row_cvt_fn;
@@ -78,7 +76,7 @@ void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt);
 
 typedef struct read_handler {
     bool (*get_img)(im_reader* rdr);
-    void (*read_rows)(im_reader* rdr, unsigned int num_rows, uint8_t* buf);
+    void (*read_rows)(im_reader *rdr, unsigned int num_rows, void *buf, int stride);
     void (*finish)(im_reader* rdr);
 } read_handler;
 

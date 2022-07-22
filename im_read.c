@@ -61,13 +61,6 @@ im_reader* im_reader_open_file(const char* filename, ImErr* err)
     return rdr;
 }
 
-void im_reader_set_fmt(im_reader* rdr, ImFmt fmt)
-{
-    assert(rdr->state == READSTATE_HEADER);
-    rdr->external_fmt = fmt;
-
-}
-
 bool im_get_img(im_reader* rdr, im_imginfo* info)
 {
     bool got;
@@ -85,6 +78,20 @@ bool im_get_img(im_reader* rdr, im_imginfo* info)
 
     rdr->state = READSTATE_HEADER;
     return got;
+}
+
+void im_reader_set_fmt(im_reader* rdr, ImFmt fmt)
+{
+    if (rdr->err != ERR_NONE) {
+        return;
+    }
+
+    // make sure im_get_img() was called first.
+    if (rdr->state != READSTATE_HEADER) {
+        rdr->err = ERR_BAD_STATE;
+        return;
+    }
+    rdr->external_fmt = fmt;
 }
 
 ImErr im_reader_finish(im_reader* rdr)
@@ -141,16 +148,17 @@ static void enter_READSTATE_BODY(im_reader* rdr)
         return;
     }
 
-    // Need a buffer to perform pixelconversion.
-    size_t curr_bytes_per_row = im_fmt_bytesperpixel(rdr->curr.fmt) * rdr->curr.w;
-    rdr->rowbuf = irealloc(rdr->rowbuf, curr_bytes_per_row);
+    // Need to perform pixelconversion. So need a buffer big enough to read
+    // in a row, in our internal pixel format.
+    size_t src_bytes_per_row = im_fmt_bytesperpixel(rdr->curr.fmt) * rdr->curr.w;
+    rdr->rowbuf = irealloc(rdr->rowbuf, src_bytes_per_row);
     if (!rdr->rowbuf) {
         rdr->err = ERR_NOMEM;
         return;
     }
 }
 
-void im_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf)
+void im_read_rows(im_reader *rdr, unsigned int num_rows, void *buf, int stride)
 {
     int i;
 
@@ -172,18 +180,20 @@ void im_read_rows(im_reader* rdr, unsigned int num_rows, uint8_t* buf)
     }
 
 
-    if(rdr->row_cvt_fn) {
+    if(rdr->curr.fmt == rdr->external_fmt) {
+        // No conversion required.
+        rdr->handler->read_rows(rdr, num_rows, buf, stride);
+        rdr->rows_read += num_rows;
+    } else {
         // Pixelconverting. Read one row at a time into rowbuf and convert.
+        size_t src_bytes_per_row = im_fmt_bytesperpixel(rdr->curr.fmt) * rdr->curr.w;
+        assert(rdr->row_cvt_fn != NULL);
         for (i=0; i<num_rows; ++i) {
-            rdr->handler->read_rows(rdr, 1, rdr->rowbuf);
+            rdr->handler->read_rows(rdr, 1, rdr->rowbuf, src_bytes_per_row);
             rdr->row_cvt_fn(rdr->rowbuf, buf, rdr->curr.w, rdr->curr.pal_num_colours, rdr->pal_data);
-            buf += im_fmt_bytesperpixel(rdr->external_fmt) * rdr->curr.w;
+            buf += stride;
             rdr->rows_read++;
         }
-    } else {
-        // No conversion required.
-        rdr->handler->read_rows(rdr, num_rows, buf);
-        rdr->rows_read += num_rows;
     }
 
     // Read them all?

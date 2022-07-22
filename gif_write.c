@@ -25,7 +25,7 @@ typedef struct gif_writer {
 
 static void pre_img(im_writer* wr);
 static void emit_header(im_writer* wr);
-static void emit_rows(im_writer* wr, unsigned int num_rows, const uint8_t* data);
+static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, int stride);
 static void finish(im_writer* wr);
 
 
@@ -177,10 +177,10 @@ static void emit_header(im_writer* wr)
 }
 
 
-static void emit_rows(im_writer* wr, unsigned int num_rows, const uint8_t* data)
+static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, int stride)
 {
     gif_writer* gw = (gif_writer*)wr;
-    int i;
+    unsigned int i;
     uint8_t const* src = data;
 
     assert(wr->internal_fmt == IM_FMT_INDEX8);
@@ -189,7 +189,7 @@ static void emit_rows(im_writer* wr, unsigned int num_rows, const uint8_t* data)
             wr->err = translate_err(gw->gif->Error);
             return;
         }
-        src += wr->w;
+        src += stride;
     }
 }
 

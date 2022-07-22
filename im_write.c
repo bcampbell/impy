@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h> // for memcmp
 #include <stdio.h>
+#include <assert.h>
 
 // Writing
 
@@ -110,12 +111,10 @@ void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
     writer->w = w;
     writer->h = h;
     writer->fmt = fmt;
-    writer->bytes_per_row = im_fmt_bytesperpixel(fmt) * w;
 
     // Assume internal format is same (but backend can call
     // i_writer_set_internal_fmt() to chnage this).
     writer->internal_fmt = fmt;
-    writer->internal_bytes_per_row = writer->bytes_per_row;
     writer->row_cvt_fn = NULL;
 
     // if backend has a pre_img hook, call it now
@@ -134,7 +133,6 @@ void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt)
     if (internal_fmt == writer->fmt) {
         // Same format. Bypass conversion.
         writer->internal_fmt = internal_fmt;
-        writer->internal_bytes_per_row = writer->bytes_per_row;
         writer->row_cvt_fn = NULL;
         return;
     }
@@ -146,9 +144,9 @@ void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt)
     }
 
     writer->internal_fmt = internal_fmt;
-    // (re)allocate the row buffer
-    writer->internal_bytes_per_row = im_fmt_bytesperpixel(internal_fmt) * writer->w;
-    writer->rowbuf = irealloc(writer->rowbuf, writer->internal_bytes_per_row);
+    // (re)allocate the row buffer - enough for the caller to write in a row in
+    // the external pixelformat.
+    writer->rowbuf = irealloc(writer->rowbuf, im_fmt_bytesperpixel(writer->fmt) * writer->w);
     if (!writer->rowbuf) {
         writer->err = ERR_NOMEM;
         return;
@@ -156,7 +154,7 @@ void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt)
 }
 
 
-void im_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data)
+void im_write_rows(im_writer *writer, unsigned int num_rows, const void *data, int stride)
 {
     if (writer->err != ERR_NONE) {
         return;
@@ -182,26 +180,28 @@ void im_write_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data
         return;
     }
 
-    if (writer->row_cvt_fn == NULL) {
-        // no conversion required.
-        writer->handler->emit_rows(writer, num_rows, data);
+    if (writer->fmt == writer->internal_fmt) {
+        // No conversion required.
+        writer->handler->emit_rows(writer, num_rows, data, stride);
         writer->rows_written += num_rows;
     } else {
-        // convert and write one row at a time.
+        // Convert from the incoming format to our internal format, one row at
+        // a time.
+        int dest_bytes_per_row = im_fmt_bytesperpixel(writer->internal_fmt) * writer->w;
+        assert(writer->row_cvt_fn != NULL);
         for (unsigned int i = 0; i < num_rows; ++i) {
             writer->row_cvt_fn(data, writer->rowbuf, writer->w, writer->pal_num_colours, writer->pal_data);
-            writer->handler->emit_rows(writer, 1, writer->rowbuf);
-            data += writer->bytes_per_row;
+            data += stride;
+            writer->handler->emit_rows(writer, 1, writer->rowbuf, dest_bytes_per_row);
             writer->rows_written++;
         }
     }
-    // Is that all the rows in the image?
 
-    // Finished the frame?
+    // Finished the image?
     if (writer->rows_written >= writer->h) {
         writer->state = WRITESTATE_READY;
         writer->num_frames++;
-        // if the handler has a post_img hook, call it now
+        // If the handler has a post_img hook, call it now.
         if (writer->handler->post_img) {
             writer->handler->post_img(writer);
         }

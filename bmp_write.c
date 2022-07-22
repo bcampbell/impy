@@ -12,7 +12,7 @@ im_writer* ibmp_new_writer(im_out* out, ImErr *err);
 
 static void ibmp_prep_img(im_writer* writer);
 static void ibmp_emit_header(im_writer* wr);
-static void ibmp_emit_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data);
+static void ibmp_emit_rows(im_writer *writer, unsigned int num_rows, const void *data, int stride);
 static void ibmp_finish(im_writer* wr);
 
 static struct write_handler bmp_write_handler = {
@@ -64,14 +64,31 @@ im_writer* ibmp_new_writer(im_out* out, ImErr* err)
 
 
 
-static void ibmp_emit_rows(im_writer* writer, unsigned int num_rows, const uint8_t *data)
+static void ibmp_emit_rows(im_writer* writer, unsigned int num_rows, const void *data, int stride)
 {
-    size_t cnt = writer->internal_bytes_per_row * num_rows;
+    size_t bytes_per_row = im_fmt_bytesperpixel(writer->internal_fmt) * writer->w;
+
     assert(writer->state == WRITESTATE_BODY);
-    if (im_write(writer->out, data, cnt) != cnt) 
-    {
-        writer->err = ERR_FILE;
-        return;
+    if (stride == (int)bytes_per_row || num_rows == 1) {
+        // Shortcut - no padding, can dump it all out in one go.
+        size_t cnt = bytes_per_row * num_rows;
+        if (im_write(writer->out, data, cnt) != cnt) 
+        {
+            writer->err = ERR_FILE;
+            return;
+        }
+    } else {
+        // Not contiguous, so have to go row-by-row.
+        unsigned int i;
+        for (i = 0; i < num_rows; ++i) {
+            size_t cnt = bytes_per_row;
+            if (im_write(writer->out, data, cnt) != cnt) 
+            {
+                writer->err = ERR_FILE;
+                return;
+            }
+            data += stride;
+        }
     }
 }
 
@@ -94,7 +111,7 @@ static void ibmp_emit_header(im_writer* wr)
     unsigned int h = wr->h;
     size_t paletteByteSize = wr->pal_num_colours * 4;
     size_t imageOffset;
-    size_t imageByteSize = h*wr->bytes_per_row;
+    size_t imageByteSize;
     size_t fileSize;
     ImErr err;
     int bitcount;
@@ -135,6 +152,7 @@ static void ibmp_emit_header(im_writer* wr)
         return;
     }
 
+    imageByteSize = h * w * im_fmt_bytesperpixel(wr->internal_fmt);
     imageOffset = BMP_FILE_HEADER_SIZE + dibheadersize + paletteByteSize;
     fileSize = imageOffset + imageByteSize;
     if(!write_file_header(fileSize, imageOffset, wr->out, &err)) {
