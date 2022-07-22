@@ -139,7 +139,7 @@ im_img* iread_jpeg_image( im_in* in, ImErr* err )
     imreader_src* src = 0;
     im_img* image = 0;
 
-    *err = ERR_NONE;
+    *err = IM_ERR_NONE;
 
     jpeg_create_decompress(&cinfo);
 
@@ -150,7 +150,7 @@ im_img* iread_jpeg_image( im_in* in, ImErr* err )
     jerr.pub.error_exit = my_error_exit;
     if (setjmp(jerr.setjmp_buffer)) {
 
-        *err = ERR_EXTLIB;
+        *err = IM_ERR_EXTLIB;
         goto cleanup;
     }
 
@@ -162,7 +162,7 @@ im_img* iread_jpeg_image( im_in* in, ImErr* err )
     int channels = cinfo.num_components;
     if( channels != 3) {
         // TODO: do we need to support other values? If so, how?
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         goto cleanup;
     }
     image = im_img_new( w, h, 1, IM_FMT_RGB);
@@ -181,7 +181,7 @@ cleanup:
         ifree(src);
     }
 
-    if (*err != ERR_NONE) {
+    if (*err != IM_ERR_NONE) {
         if (image) {
             im_img_free(image);
             image = 0;

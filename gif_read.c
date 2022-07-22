@@ -23,10 +23,10 @@ static read_handler gif_read_handler = {
 static ImErr translate_err( int gif_err_code )
 {
     switch(gif_err_code) {
-        case D_GIF_ERR_NOT_GIF_FILE: return ERR_MALFORMED;
-        case D_GIF_ERR_NOT_ENOUGH_MEM: return ERR_NOMEM;
+        case D_GIF_ERR_NOT_GIF_FILE: return IM_ERR_MALFORMED;
+        case D_GIF_ERR_NOT_ENOUGH_MEM: return IM_ERR_NOMEM;
        //TODO:
-        default: return ERR_MALFORMED; 
+        default: return IM_ERR_MALFORMED; 
     }
 }
 
@@ -78,7 +78,7 @@ im_read* i_new_gif_reader(im_in *in, ImErr *err)
 {
     gif_reader* gr = imalloc(sizeof(gif_reader));
     if (!gr) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return NULL;
     }
 
@@ -116,7 +116,7 @@ static void read_file_header(im_read* rdr)
     // we need a buffer big enough to decode a line
     gr->linebuf = imalloc((size_t)gr->gif->SWidth);
     if (!gr->linebuf) {
-        rdr->err = ERR_NOMEM;
+        rdr->err = IM_ERR_NOMEM;
         return;
     }
 
@@ -126,7 +126,7 @@ static void read_file_header(im_read* rdr)
         int h = (int)gr->gif->SHeight;
         gr->accumulator = im_img_new(w, h, 1, IM_FMT_INDEX8);
         if (!gr->accumulator) {
-            rdr->err = ERR_NOMEM;
+            rdr->err = IM_ERR_NOMEM;
             return;
         }
         gr->disposal = DISPOSAL_UNSPECIFIED;
@@ -155,7 +155,7 @@ static void gif_read_finish(im_read* rdr)
     if (gr->gif) {
         int giferr;
         if(DGifCloseFile(gr->gif, &giferr)!=GIF_OK) {
-            if (rdr->err == ERR_NONE) {
+            if (rdr->err == IM_ERR_NONE) {
                 rdr->err = translate_err(giferr);
             }
         }
@@ -171,7 +171,7 @@ static bool gif_read_img(im_read* rdr)
     if (rdr->frame_num == 0) {
         // First frame, so open the file and get the file header et al.
         read_file_header(rdr);
-        if (rdr->err != ERR_NONE) {
+        if (rdr->err != IM_ERR_NONE) {
             return false;
         }
     }
@@ -179,18 +179,18 @@ static bool gif_read_img(im_read* rdr)
     while(true) {
         GifRecordType rec_type;
         if (DGifGetRecordType(gr->gif, &rec_type) != GIF_OK) {
-            rdr->err = ERR_MALFORMED;
+            rdr->err = IM_ERR_MALFORMED;
             return false;
         }
         switch(rec_type) {
             case UNDEFINED_RECORD_TYPE:
             case SCREEN_DESC_RECORD_TYPE:
-                rdr->err = ERR_MALFORMED;
+                rdr->err = IM_ERR_MALFORMED;
                 return false;
             case IMAGE_DESC_RECORD_TYPE:
                 // read the frame
                 process_image(rdr);
-                if (rdr->err != ERR_NONE) {
+                if (rdr->err != IM_ERR_NONE) {
                     return false;
                 }
                 {
@@ -208,12 +208,12 @@ static bool gif_read_img(im_read* rdr)
                         // Copy out palette, in RGBA format.
                         rdr->pal_data = irealloc(rdr->pal_data, img->pal_num_colours * im_fmt_bytesperpixel(IM_FMT_RGBA));
                         if (!rdr->pal_data) {
-                            rdr->err = ERR_NOMEM;
+                            rdr->err = IM_ERR_NOMEM;
                             return false;
                         }
                         im_convert_fn cvt_fn = i_pick_convert_fn(img->pal_fmt, IM_FMT_RGBA);
                         if (!cvt_fn) {
-                            rdr->err = ERR_NOCONV;
+                            rdr->err = IM_ERR_NOCONV;
                             return false;
                         }
                         cvt_fn(img->pal_data, rdr->pal_data, img->pal_num_colours, 0, NULL);
@@ -223,7 +223,7 @@ static bool gif_read_img(im_read* rdr)
             case EXTENSION_RECORD_TYPE:
                 // TODO: set error code!
                 if( !process_extension(rdr) ) {
-                    rdr->err = ERR_MALFORMED;
+                    rdr->err = IM_ERR_MALFORMED;
                     return false;
                 }
                 break;
@@ -303,7 +303,7 @@ static void process_image(im_read* rdr)
             }
             gr->backup = im_img_clone(gr->accumulator);
             if (!gr->backup) {
-                rdr->err = ERR_NOMEM;
+                rdr->err = IM_ERR_NOMEM;
                 return;
             }
         }
@@ -323,7 +323,7 @@ static void process_image(im_read* rdr)
 
         // update the palette
         if (!apply_palette(gif, gr->accumulator, trns)) {
-            rdr->err = ERR_NOMEM;
+            rdr->err = IM_ERR_NOMEM;
             return;
         }
 
@@ -340,7 +340,7 @@ static void process_image(im_read* rdr)
         // im_img_reuse()?
         img = im_img_new((int)gif->Image.Width, (int)gif->Image.Height,1,IM_FMT_INDEX8);
         if (!img) {
-            rdr->err = ERR_NOMEM;
+            rdr->err = IM_ERR_NOMEM;
             return;
         }
         if (!decode(gif, img, 0, 0)) {
@@ -350,7 +350,7 @@ static void process_image(im_read* rdr)
         }
 
         if (!apply_palette(gif, img, trns)) {
-            rdr->err = ERR_NOMEM;
+            rdr->err = IM_ERR_NOMEM;
             im_img_free(img);
             return;
         }

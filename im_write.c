@@ -15,7 +15,7 @@ extern im_write* ipng_new_writer(im_out* out, ImErr* err); // png_write.c
 void i_write_init(im_write* writer)
 {
     memset(writer, 0, sizeof(im_write));
-    writer->err = ERR_NONE;
+    writer->err = IM_ERR_NONE;
     writer->state = WRITESTATE_READY;
 }
 
@@ -30,7 +30,7 @@ im_write* im_write_new(ImFileFmt file_fmt, im_out* out, ImErr* err)
         case IM_FILEFMT_BMP:
             return ibmp_new_writer(out, err);
         default:
-           *err = ERR_UNSUPPORTED;
+           *err = IM_ERR_UNSUPPORTED;
           return NULL; 
     }
 }
@@ -45,8 +45,8 @@ ImErr im_write_finish(im_write* writer)
     if (writer->out && writer->out_owned) {
         // Close and free `out`.
         if (im_out_close(writer->out) < 0 ) {
-            if (writer->err == ERR_NONE) {
-                writer->err = ERR_FILE;
+            if (writer->err == IM_ERR_NONE) {
+                writer->err = IM_ERR_FILE;
             }
         }
         writer->out = NULL;
@@ -96,13 +96,13 @@ im_write* im_write_open_file(const char *filename, ImErr* err)
 
 void im_write_img(im_write* writer, unsigned int w, unsigned int h, ImFmt fmt)
 {
-    if (writer->err != ERR_NONE) {
+    if (writer->err != IM_ERR_NONE) {
         return;
     }
 
     // Ready for image?
     if (writer->state != WRITESTATE_READY) {
-        writer->err = ERR_UNFINISHED_IMG;   // hmm...
+        writer->err = IM_ERR_UNFINISHED_IMG;   // hmm...
         return;
     }
 
@@ -139,7 +139,7 @@ void i_write_set_internal_fmt(im_write* writer, ImFmt internal_fmt)
 
     writer->row_cvt_fn = i_pick_convert_fn(internal_fmt, writer->fmt);
     if (writer->row_cvt_fn == NULL) {
-        writer->err = ERR_NOCONV;
+        writer->err = IM_ERR_NOCONV;
         return;
     }
 
@@ -148,7 +148,7 @@ void i_write_set_internal_fmt(im_write* writer, ImFmt internal_fmt)
     // the external pixelformat.
     writer->rowbuf = irealloc(writer->rowbuf, im_fmt_bytesperpixel(writer->fmt) * writer->w);
     if (!writer->rowbuf) {
-        writer->err = ERR_NOMEM;
+        writer->err = IM_ERR_NOMEM;
         return;
     }
 }
@@ -156,18 +156,18 @@ void i_write_set_internal_fmt(im_write* writer, ImFmt internal_fmt)
 
 void im_write_rows(im_write *writer, unsigned int num_rows, const void *data, int stride)
 {
-    if (writer->err != ERR_NONE) {
+    if (writer->err != IM_ERR_NONE) {
         return;
     }
     if (writer->state == WRITESTATE_READY) {
-        writer->err = ERR_NOT_IN_IMG;   // begin_img wasn't called first.
+        writer->err = IM_ERR_NOT_IN_IMG;   // begin_img wasn't called first.
         return;
     }
 
     if (writer->state == WRITESTATE_HEADER) {
         // write out everything up to the image data
         writer->handler->emit_header(writer);
-        if (writer->err != ERR_NONE) {
+        if (writer->err != IM_ERR_NONE) {
             return;
         }
         writer->state = WRITESTATE_BODY;
@@ -176,7 +176,7 @@ void im_write_rows(im_write *writer, unsigned int num_rows, const void *data, in
 
     // Write the rows.
     if (writer->rows_written + num_rows > writer->h) {
-        writer->err = ERR_TOO_MANY_ROWS;
+        writer->err = IM_ERR_TOO_MANY_ROWS;
         return;
     }
 
@@ -210,27 +210,27 @@ void im_write_rows(im_write *writer, unsigned int num_rows, const void *data, in
 
 void im_write_palette(im_write* wr, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours)
 {
-    if (wr->err != ERR_NONE) {
+    if (wr->err != IM_ERR_NONE) {
         return;
     }
     if (wr->state == WRITESTATE_READY) {
-        wr->err = ERR_NOT_IN_IMG;   // begin_img wasn't called first.
+        wr->err = IM_ERR_NOT_IN_IMG;   // begin_img wasn't called first.
         return;
     }
     if (wr->state == WRITESTATE_BODY) {
-        wr->err = ERR_UNFINISHED_IMG;   // should be writing rows.
+        wr->err = IM_ERR_UNFINISHED_IMG;   // should be writing rows.
         return;
     }
 
     if (num_colours>256) {
-        wr->err = ERR_PALETTE_TOO_BIG;
+        wr->err = IM_ERR_PALETTE_TOO_BIG;
         return;
     }
 
     // Internally we always store as RGBA 
     im_convert_fn cvt = i_pick_convert_fn(pal_fmt, IM_FMT_RGBA);
     if (!cvt) {
-        wr->err = ERR_NOCONV;   // No suitable palette conversion.
+        wr->err = IM_ERR_NOCONV;   // No suitable palette conversion.
         return;
     }
 

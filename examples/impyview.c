@@ -264,7 +264,7 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
     err = im_read_finish(rdr);
     rdr = NULL;
 
-    if (err!= ERR_NONE) {
+    if (err!= IM_ERR_NONE) {
         goto bailout;
     }
     return doc;

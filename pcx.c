@@ -57,7 +57,7 @@ im_img* iread_pcx_image( im_in* in, ImErr* err )
 {
     im_img* img = NULL;
     header pcx = {0};
-    *err = ERR_NONE;
+    *err = IM_ERR_NONE;
 
     if (!read_header( &pcx, in, err)) {
         goto cleanup;
@@ -71,7 +71,7 @@ im_img* iread_pcx_image( im_in* in, ImErr* err )
 
         img = im_img_new( pcx.w, pcx.h, 1, IM_FMT_INDEX8);
         if (!img) {
-            *err = ERR_NOMEM;
+            *err = IM_ERR_NOMEM;
             goto cleanup;
         }
 
@@ -84,12 +84,12 @@ im_img* iread_pcx_image( im_in* in, ImErr* err )
         // some files have dodgy RLE, so you can't always tell where the image data ends.
         im_in_seek(in, -(1+(256*3)), IM_SEEK_END);
         if (im_in_read(in, cmap, 1+(256*3)) != 1+(256*3)) {
-            *err = ERR_MALFORMED;
+            *err = IM_ERR_MALFORMED;
             goto cleanup;
         }
         // cmap is preceeded by marker byte 0x0c;
         if( cmap[0] != 0x0c ) {
-            *err = ERR_MALFORMED;
+            *err = IM_ERR_MALFORMED;
             goto cleanup;
         }
         im_img_pal_set(img, IM_FMT_RGB, 256, cmap+1);
@@ -99,7 +99,7 @@ im_img* iread_pcx_image( im_in* in, ImErr* err )
 
         img = im_img_new( pcx.w, pcx.h, 1, IM_FMT_RGB);
         if (!img) {
-            *err = ERR_NOMEM;
+            *err = IM_ERR_NOMEM;
             goto cleanup;
         }
 
@@ -117,7 +117,7 @@ im_img* iread_pcx_image( im_in* in, ImErr* err )
             }
         }
     } else {
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         goto cleanup;
     }
 
@@ -128,7 +128,7 @@ cleanup:
         ifree(pcx.scanbuf);
     }
 
-    if( img && *err != ERR_NONE) {
+    if( img && *err != IM_ERR_NONE) {
         im_img_free(img);
         img = NULL;
     }
@@ -147,7 +147,7 @@ static bool read_header( header* pcx, im_in* in, ImErr *err)
     uint8_t* p;
 
     if (im_in_read( in, buf, 128) != 128) {
-        *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
+        *err = im_in_eof(in) ? IM_ERR_MALFORMED:IM_ERR_FILE;
         return false;
     }
 
@@ -176,17 +176,17 @@ static bool read_header( header* pcx, im_in* in, ImErr *err)
 
     // some sanity checks
     if (!is_pcx(buf,128) ) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
     if( pcx->planes < 1 || pcx->planes > 4) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
 
     pcx->scanbuf = imalloc(pcx->bytesperline * pcx->planes);
     if (!pcx->scanbuf) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
     }
 
     return true;
@@ -206,7 +206,7 @@ static void decode_scanline( header* pcx, im_in* in)
         if (reps==0) {
             if (im_in_read(in,&val,1) != 1) {
                 //printf("ERROR: BADBYTE\n");
-                /**err = im_eof(in)? ERR_MALFORMED:ERR_FILE;
+                /**err = im_eof(in)? IM_ERR_MALFORMED:IM_ERR_FILE;
                 return false;
                 */
                 val=0;
@@ -214,7 +214,7 @@ static void decode_scanline( header* pcx, im_in* in)
             if (val >= 0xc0) {
                 reps = (val - 0xc0);
                 if (im_in_read(in,&val,1) != 1) {
-                    //*err = im_eof(in)? ERR_MALFORMED:ERR_FILE;
+                    //*err = im_eof(in)? IM_ERR_MALFORMED:IM_ERR_FILE;
                     //printf("ERROR: BADREP\n");
                     val=0;
                 }

@@ -51,7 +51,7 @@ im_write* igif_new_writer(im_out* out, ImErr* err)
 {
     gif_writer* gw = imalloc(sizeof(gif_writer));
     if (!gw) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return NULL;
     }
     i_write_init(&gw->base);
@@ -74,7 +74,7 @@ static void pre_img(im_write* writer)
     // Only accept indexed data. We won't do quantisation on-the-fly, so this
     // will fail if the user is planning to send us RGB or whatever.
     i_write_set_internal_fmt(writer, IM_FMT_INDEX8);
-    if (writer->err != ERR_NONE) {
+    if (writer->err != IM_ERR_NONE) {
         return;
     }
 }
@@ -98,7 +98,7 @@ static void emit_header(im_write* wr)
         // Set up the global colormap (and transparent index)
         gw->global_cm = cvt_palette(wr->pal_num_colours, wr->pal_data, &gw->global_trans);
         if( gw->global_cm == NULL) {
-            wr->err = ERR_NO_PALETTE;
+            wr->err = IM_ERR_NO_PALETTE;
             return;
         }
 
@@ -134,7 +134,7 @@ static void emit_header(im_write* wr)
     }
     gw->local_cm = cvt_palette(wr->pal_num_colours, wr->pal_data, &gw->local_trans);
     if( gw->local_cm == NULL) {
-        wr->err = ERR_NO_PALETTE;
+        wr->err = IM_ERR_NO_PALETTE;
         return;
     }
 
@@ -249,10 +249,10 @@ static ColorMapObject* cvt_palette(unsigned int num_colours, const uint8_t *src,
 static ImErr translate_err(int gif_err_code)
 {
     switch(gif_err_code) {
-        case D_GIF_ERR_NOT_GIF_FILE: return ERR_MALFORMED;
-        case D_GIF_ERR_NOT_ENOUGH_MEM: return ERR_NOMEM;
+        case D_GIF_ERR_NOT_GIF_FILE: return IM_ERR_MALFORMED;
+        case D_GIF_ERR_NOT_ENOUGH_MEM: return IM_ERR_NOMEM;
        //TODO:
-        default: return ERR_MALFORMED; 
+        default: return IM_ERR_MALFORMED; 
     }
 }
 
@@ -283,7 +283,7 @@ static void finish(im_write* wr)
     if (gw->gif) {
         int giferr;
         if( GIF_OK != EGifCloseFile(gw->gif, &giferr) ) {
-            if (wr->err == ERR_NONE) {
+            if (wr->err == IM_ERR_NONE) {
                 wr->err = translate_err(giferr);
             }
         }

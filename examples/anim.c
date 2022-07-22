@@ -23,16 +23,16 @@ int main( int argc, char* argv[])
 {
     ImErr err;
     err = test_indexed_img(IM_FILEFMT_PNG, "/tmp/test.png");
-    if (err != ERR_NONE) {
+    if (err != IM_ERR_NONE) {
         fprintf(stderr, "test.png failed: ImErr: %d\n", err);
     }
     err = test_indexed_img(IM_FILEFMT_BMP, "/tmp/test.bmp");
-    if (err != ERR_NONE) {
+    if (err != IM_ERR_NONE) {
         fprintf(stderr, "test.bmp failed: ImErr: %d\n", err);
     }
 
     test_anim(IM_FILEFMT_GIF, "/tmp/anim.gif");
-    if (err != ERR_NONE) {
+    if (err != IM_ERR_NONE) {
         fprintf(stderr, "anim.gif failed: ImErr: %d\n", err);
     }
 }

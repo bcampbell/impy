@@ -33,7 +33,7 @@ im_read* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* 
 {
     generic_reader *gr = imalloc(sizeof(generic_reader));
     if (!gr) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return NULL;
     }
 
@@ -80,12 +80,12 @@ static bool generic_read_img(im_read* rdr)
         // Copy out palette, in RGBA format.
         rdr->pal_data = irealloc(rdr->pal_data, img->pal_num_colours * im_fmt_bytesperpixel(IM_FMT_RGBA));
         if (!rdr->pal_data) {
-            rdr->err = ERR_NOMEM;
+            rdr->err = IM_ERR_NOMEM;
             return false;
         }
         im_convert_fn cvt_fn = i_pick_convert_fn(img->pal_fmt, IM_FMT_RGBA);
         if (!cvt_fn) {
-            rdr->err = ERR_NOCONV;
+            rdr->err = IM_ERR_NOCONV;
             return false;
         }
         cvt_fn(img->pal_data, rdr->pal_data, img->pal_num_colours, 0, NULL);

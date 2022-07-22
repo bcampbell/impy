@@ -245,12 +245,12 @@ static bool handle_FORM( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
     int remaining = (int)chunklen;
 
     if (remaining<4) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
 
     if (im_read(rdr, kind,4) != 4) {
-        *err = ERR_MALFORMED;   // TODO: distingush between read error and eof
+        *err = IM_ERR_MALFORMED;   // TODO: distingush between read error and eof
         return false;
     }
     remaining -= 4;
@@ -261,7 +261,7 @@ static bool handle_FORM( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
         // unsupported FORM type (eg 8SVX sound)- skip it
         //printf("%s->skip\n", indent(ctx->level));
         if(im_seek(rdr,remaining, SEEK_CUR) != 0 ) {
-            *err = ERR_FILE;
+            *err = IM_ERR_FILE;
             return false;
         }
         return true;
@@ -271,7 +271,7 @@ static bool handle_FORM( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
     if (chkcc(kind,"ILBM") || chkcc(kind,"PBM ")) {
         frame* f = ctx_add_frame(ctx,kind);
         if (!f) {
-            *err = ERR_NOMEM;
+            *err = IM_ERR_NOMEM;
             return false;
         }
     }
@@ -301,13 +301,13 @@ static bool handle_BMHD(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
     frame* f = ctx_curframe(ctx);
 
     if( !f) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
     bmhd = &f->bmhd;
 
     if (chunklen != 20) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
     bmhd->w = im_read_u16be(rdr);
@@ -325,7 +325,7 @@ static bool handle_BMHD(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
     bmhd->pageHeight = im_read_s16be(rdr);
 
     if(im_error(rdr)) {
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+        *err = im_eof(rdr) ? IM_ERR_MALFORMED : IM_ERR_FILE;
         return false;
     }
     //printf("%s %dx%d planes: %d masking: %d compression: 0x%02x\n", indent(ctx->level), bmhd->w, bmhd->h, bmhd->nPlanes, bmhd->masking, bmhd->compression);
@@ -338,11 +338,11 @@ static bool handle_CAMG(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
     uint8_t buf[4];
     uint32_t mode;
     if( chunklen!=4) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
     if (im_read(rdr,buf,4)!=4) {
-        *err = im_eof(rdr)?ERR_MALFORMED:ERR_FILE;
+        *err = im_eof(rdr)?IM_ERR_MALFORMED:IM_ERR_FILE;
         return false;
     }
 
@@ -362,24 +362,24 @@ static bool handle_CMAP(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
     frame* f = ctx_curframe(ctx);
 
     if( !f) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
 
 /*    if( !ctx->got_bmhd) {
         // cmap without bmhd
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
     }
     */
     // for now, just stash the chunk verbatim
     data = imalloc(chunklen);
     if (!data) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return false;
     }
     if (im_read(rdr,data,chunklen)!=chunklen) {
         ifree(data);
-        *err = ERR_FILE;
+        *err = IM_ERR_FILE;
         return false;
     }
 
@@ -401,7 +401,7 @@ static bool handle_BODY(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
     frame* f = ctx_curframe(ctx);
 
     if( !f) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
 
@@ -410,13 +410,13 @@ static bool handle_BODY(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
     // decode DLTA chunks.
 
     if (!f->got_bmhd) {
-        *err = ERR_MALFORMED;   // got BODY before BMHD
+        *err = IM_ERR_MALFORMED;   // got BODY before BMHD
         return false;
     }
 
     if (f->bmhd.masking !=0) {
         //printf("MASKING=%d\n",f->bmhd.masking );
-        *err = ERR_MALFORMED;   // got BODY before BMHD
+        *err = IM_ERR_MALFORMED;   // got BODY before BMHD
         return false;
     }
 
@@ -424,18 +424,18 @@ static bool handle_BODY(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
         case cmpByteRun1: break;
         case cmpNone: break;
         default:
-            *err = ERR_UNSUPPORTED;
+            *err = IM_ERR_UNSUPPORTED;
             return false;
     }
 
     if (f->image_data) {
         // already had a BODY chunk?
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
 
     if (f->bmhd.nPlanes >32) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
 
@@ -451,7 +451,7 @@ static bool handle_BODY(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
         int n = im_read(rdr,f->image_data, data_size);
         if (n != data_size) {
             // don't need to free image data - context will handle it
-            *err = ERR_MALFORMED;
+            *err = IM_ERR_MALFORMED;
             return false;
         }
         consumed += data_size;
@@ -464,7 +464,7 @@ static bool handle_BODY(context* ctx, im_in* rdr, uint32_t chunklen, ImErr *err 
         for (y=0; y<f->bmhd.h; ++y) {
             int n = decodeLine(rdr,dest,bytes_per_line);
             if (n<0) {
-                *err = ERR_MALFORMED;
+                *err = IM_ERR_MALFORMED;
                 return false;
             }
             consumed += n;
@@ -541,7 +541,7 @@ static bool handle_ANHD( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
     AnimHeader* anhd;
 
     if( !f) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
     anhd = &f->anhd;
@@ -560,7 +560,7 @@ static bool handle_ANHD( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
     im_read(rdr,anhd->pad,16);
 
     if(im_error(rdr)) {
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+        *err = im_eof(rdr) ? IM_ERR_MALFORMED : IM_ERR_FILE;
         return false;
     }
 /*
@@ -593,30 +593,30 @@ static bool handle_DLTA( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
     int num_cols;
 
     if( !ctx_size_buffer(ctx,chunklen)) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return false;
     }
 
     if(im_read(rdr,ctx->buf,chunklen)!=chunklen) {
-        *err = im_eof(rdr) ? ERR_MALFORMED: ERR_FILE;
+        *err = im_eof(rdr) ? IM_ERR_MALFORMED: IM_ERR_FILE;
         return false;
     }
 
     if (ctx->nframes < 1) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
 
     first = ctx->frames[0];
     cur = ctx_curframe(ctx);
     if (!first || !cur || !first->got_bmhd || !cur->got_anhd) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
 
     if (cur->anhd.operation != 0x05) {
         // we currently only handle ANIM5
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         return false;
     }
 
@@ -629,14 +629,14 @@ static bool handle_DLTA( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
     }
     if (fromidx<0) {
         fromidx = 0;
-//        *err = ERR_MALFORMED;
+//        *err = IM_ERR_MALFORMED;
  //       return false;
     }
     //printf("copy from frame %d\n",fromidx);
 
     from = ctx->frames[fromidx];
     if(!from->image_data) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     } 
     wordswide = (first->bmhd.w +15)/16;
@@ -645,7 +645,7 @@ static bool handle_DLTA( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
     image_size = (wordswide*2)*nplanes*height;
     cur->image_data = imalloc(image_size);
     if (!cur->image_data) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return false;
     }
     memcpy(cur->image_data, from->image_data, image_size);
@@ -660,7 +660,7 @@ static bool handle_DLTA( context* ctx, im_in* rdr, uint32_t chunklen, ImErr* err
         first->bmhd.nPlanes,
         first->bmhd.h))
     {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return false;
     }
     return true;
@@ -800,7 +800,7 @@ static int parse_chunk( context* ctx, im_in* rdr, ImErr* err ) {
         if (im_eof(rdr)) {
             return chunklen;
         }
-        *err = ERR_FILE;
+        *err = IM_ERR_FILE;
         return -1;
     }
     consumed += 8;
@@ -832,7 +832,7 @@ static int parse_chunk( context* ctx, im_in* rdr, ImErr* err ) {
     } else {
         // unknown/unhandled chunk type. skip it.
         if (im_seek(rdr, chunklen, SEEK_CUR)!=0) {
-            *err = ERR_FILE;
+            *err = IM_ERR_FILE;
             success = false;
         } else {
             success = true;
@@ -849,7 +849,7 @@ static int parse_chunk( context* ctx, im_in* rdr, ImErr* err ) {
     if (chunklen&1) {
         // read the pad byte
         if (im_seek(rdr, 1, SEEK_CUR)!=0) {
-            *err = ERR_MALFORMED;
+            *err = IM_ERR_MALFORMED;
             return -1;
         }
         consumed += 1;
@@ -872,7 +872,7 @@ static im_bundle* read_iff_bundle( im_in* rdr, ImErr* err )
 
     context* ctx = ctx_new();
     if (!ctx) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         goto bailout;
     }
     if (parse_chunk(ctx,rdr,err)<0 ) {
@@ -882,7 +882,7 @@ static im_bundle* read_iff_bundle( im_in* rdr, ImErr* err )
     bundle = im_bundle_new();
     if (!bundle)
     {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         goto bailout;
     }
 
@@ -918,7 +918,7 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
         // track latest cmap as we go
         if (f->cmap_data) {
             if (f->cmap_len>sizeof(cmap_buf)) {
-                *err = ERR_MALFORMED;
+                *err = IM_ERR_MALFORMED;
             }
             memcpy(cmap_buf, f->cmap_data, f->cmap_len);
             if( f->cmap_len>cmap_len) {
@@ -931,7 +931,7 @@ static bool ctx_collect_bundle( context* ctx, im_bundle* out, ImErr* err)
             SlotID id = {0};
             id.frame = f->num;
             if (!im_bundle_set(out,id,img)) {
-                *err = ERR_NOMEM;
+                *err = IM_ERR_NOMEM;
                 return false;
             }
         } else {
@@ -955,7 +955,7 @@ static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data
     first = ctx->frames[0];
 
     if( !first->got_bmhd || !f->image_data) {
-        *err = ERR_MALFORMED;
+        *err = IM_ERR_MALFORMED;
         return NULL;
     }
 
@@ -963,14 +963,14 @@ static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data
 
     // TODO:
     if( bmhd->nPlanes>8) {
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         return NULL;
     }
 
     // TODO: handle 24 and 32-plane images (IM_FMT_RGB and IM_FMT_RGBA)
     im_img* img = im_img_new(bmhd->w, bmhd->h, 1, IM_FMT_INDEX8);
     if( !img) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return NULL;
     }
 
@@ -1010,7 +1010,7 @@ static im_img* frame_to_img(context* ctx, int frameidx, const uint8_t* cmap_data
     // TODO: pad out to at least 2^nPlanes entries
     if (cmap_data) {
         if( !im_img_pal_set(img, IM_FMT_RGB, cmap_len/3, cmap_data) ) {
-            *err = ERR_NOMEM;
+            *err = IM_ERR_NOMEM;
             im_img_free(img);
             return NULL;
         }

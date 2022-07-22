@@ -9,7 +9,7 @@
 void i_read_init(im_read* rdr)
 {
     memset(rdr, 0, sizeof(im_read));
-    rdr->err = ERR_NONE;
+    rdr->err = IM_ERR_NONE;
     rdr->state = READSTATE_READY;
     rdr->external_fmt = IM_FMT_NONE;
 }
@@ -32,7 +32,7 @@ im_read* im_read_new(ImFileFmt file_fmt, im_in* in, ImErr* err)
         case IM_FILEFMT_TARGA:
             return im_new_generic_reader(iread_targa_image, in ,err);
         default:
-           *err = ERR_UNSUPPORTED;
+           *err = IM_ERR_UNSUPPORTED;
           return NULL; 
     }
 }
@@ -65,11 +65,11 @@ bool im_read_img(im_read* rdr, im_imginfo* info)
 {
     bool got;
 
-    if (rdr->err != ERR_NONE) {
+    if (rdr->err != IM_ERR_NONE) {
         return false;
     }
     if (rdr->state != READSTATE_READY) {
-        rdr->err = ERR_BAD_STATE;
+        rdr->err = IM_ERR_BAD_STATE;
         return false;
     }
 
@@ -82,13 +82,13 @@ bool im_read_img(im_read* rdr, im_imginfo* info)
 
 void im_read_set_fmt(im_read* rdr, ImFmt fmt)
 {
-    if (rdr->err != ERR_NONE) {
+    if (rdr->err != IM_ERR_NONE) {
         return;
     }
 
     // make sure im_get_img() was called first.
     if (rdr->state != READSTATE_HEADER) {
-        rdr->err = ERR_BAD_STATE;
+        rdr->err = IM_ERR_BAD_STATE;
         return;
     }
     rdr->external_fmt = fmt;
@@ -108,8 +108,8 @@ ImErr im_read_finish(im_read* rdr)
     if (rdr->in && rdr->in_owned) {
         // Close and free `in`.
         if (im_in_close(rdr->in) < 0) {
-            if (rdr->err != ERR_NONE) {
-                rdr->err = ERR_FILE;
+            if (rdr->err != IM_ERR_NONE) {
+                rdr->err = IM_ERR_FILE;
             }
         }
         rdr->in = NULL;
@@ -144,7 +144,7 @@ static void enter_READSTATE_BODY(im_read* rdr)
 
     rdr->row_cvt_fn = i_pick_convert_fn(rdr->curr.fmt, rdr->external_fmt); 
     if (rdr->row_cvt_fn == NULL) {
-        rdr->err = ERR_NOCONV;
+        rdr->err = IM_ERR_NOCONV;
         return;
     }
 
@@ -153,7 +153,7 @@ static void enter_READSTATE_BODY(im_read* rdr)
     size_t src_bytes_per_row = im_fmt_bytesperpixel(rdr->curr.fmt) * rdr->curr.w;
     rdr->rowbuf = irealloc(rdr->rowbuf, src_bytes_per_row);
     if (!rdr->rowbuf) {
-        rdr->err = ERR_NOMEM;
+        rdr->err = IM_ERR_NOMEM;
         return;
     }
 }
@@ -162,11 +162,11 @@ void im_read_rows(im_read *rdr, unsigned int num_rows, void *buf, int stride)
 {
     int i;
 
-    if (rdr->err != ERR_NONE) {
+    if (rdr->err != IM_ERR_NONE) {
         return;
     }
     if (rdr->state == READSTATE_READY) {
-        rdr->err = ERR_BAD_STATE;
+        rdr->err = IM_ERR_BAD_STATE;
         return;
     } else if (rdr->state == READSTATE_HEADER) {
         // start reading.
@@ -175,7 +175,7 @@ void im_read_rows(im_read *rdr, unsigned int num_rows, void *buf, int stride)
 
     // Are there enough rows left?
     if (rdr->rows_read + num_rows > rdr->curr.h) {
-        rdr->err = ERR_TOO_MANY_ROWS;
+        rdr->err = IM_ERR_TOO_MANY_ROWS;
         return;
     }
 
@@ -205,26 +205,26 @@ void im_read_rows(im_read *rdr, unsigned int num_rows, void *buf, int stride)
 
 void im_read_palette(im_read* rdr, ImFmt pal_fmt, uint8_t* buf)
 {
-    if (rdr->err != ERR_NONE) {
+    if (rdr->err != IM_ERR_NONE) {
         return;
     }
     if (rdr->state != READSTATE_HEADER) {
-        rdr->err = ERR_BAD_STATE;
+        rdr->err = IM_ERR_BAD_STATE;
         return;
     }
 
     if (rdr->curr.pal_num_colours == 0) {
-        rdr->err = ERR_NO_PALETTE;
+        rdr->err = IM_ERR_NO_PALETTE;
         return;
     }
     if (!im_fmt_has_rgb(pal_fmt)) {
-        rdr->err = ERR_NOCONV;  // Not a suitable format for a palette.
+        rdr->err = IM_ERR_NOCONV;  // Not a suitable format for a palette.
         return;
     }
 
     im_convert_fn cvt_fn = i_pick_convert_fn(IM_FMT_RGBA, pal_fmt);
     if (!cvt_fn) {
-        rdr->err = ERR_NOCONV;
+        rdr->err = IM_ERR_NOCONV;
         return;
     }
     cvt_fn(rdr->pal_data, buf, rdr->curr.pal_num_colours, 0, NULL);

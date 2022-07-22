@@ -21,7 +21,7 @@ int main( int argc, char* argv[])
     }
 
     err = im_read_finish(rdr);
-    if (err!= ERR_NONE) {
+    if (err!= IM_ERR_NONE) {
         fprintf(stderr,"cleanup failed (err=%d)\n",err);
     }
     return 0;

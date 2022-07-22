@@ -40,13 +40,13 @@ static bool is_png(const uint8_t* buf, int nbytes)
 
 im_img* iread_png_image(im_in* in, ImErr *err)
 {
-    struct cbdat cbDat = {ERR_NONE,0,NULL};
+    struct cbdat cbDat = {IM_ERR_NONE,0,NULL};
     png_structp png_ptr;
     png_infop info_ptr;
 
     png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL,NULL,NULL);
     if (!png_ptr) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return NULL;
     }
 
@@ -55,7 +55,7 @@ im_img* iread_png_image(im_in* in, ImErr *err)
     if (!info_ptr)
     {
        png_destroy_read_struct(&png_ptr, NULL, NULL);
-       *err = ERR_NOMEM;
+       *err = IM_ERR_NOMEM;
        return NULL;
     }
 
@@ -69,8 +69,8 @@ im_img* iread_png_image(im_in* in, ImErr *err)
             im_img_free(cbDat.image);
         }
         *err = cbDat.err;
-        if (*err == ERR_NONE) {
-            *err = ERR_EXTLIB;
+        if (*err == IM_ERR_NONE) {
+            *err = IM_ERR_EXTLIB;
         }
         return NULL;
     }
@@ -159,7 +159,7 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
             case PNG_COLOR_TYPE_GRAY:
             case PNG_COLOR_TYPE_GRAY_ALPHA:
             default:
-                cbDat->err = ERR_UNSUPPORTED;
+                cbDat->err = IM_ERR_UNSUPPORTED;
                 png_error(png_ptr, "unsupported color type");
         }
 
@@ -168,19 +168,19 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
         } else if (bitDepth==16) {
             png_set_scale_16(png_ptr);
         } else {
-            cbDat->err = ERR_UNSUPPORTED;
+            cbDat->err = IM_ERR_UNSUPPORTED;
             png_error(png_ptr, "unsupported color type");
         }
         
         cbDat->image = im_img_new(width,height,1,fmt);
         if (cbDat->image == NULL) {
-            cbDat->err = ERR_NOMEM;
+            cbDat->err = IM_ERR_NOMEM;
             png_error(png_ptr, "im_img_new() failed");
         }
 
         // if there's a palette, install it
         if (!apply_palette(png_ptr, info_ptr, cbDat->image)) {
-            cbDat->err = ERR_NOMEM;
+            cbDat->err = IM_ERR_NOMEM;
             png_error(png_ptr, "failed while installing palette");
         }
     }

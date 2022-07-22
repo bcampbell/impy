@@ -41,7 +41,7 @@ im_write* ipng_new_writer(im_out* out, ImErr* err)
 {
     ipng_writer* pw = imalloc(sizeof(ipng_writer));
     if (!pw) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return NULL;
     }
 
@@ -54,7 +54,7 @@ im_write* ipng_new_writer(im_out* out, ImErr* err)
     pw->png_ptr = NULL;
     pw->info_ptr = NULL;
 
-    *err = ERR_NONE;
+    *err = IM_ERR_NONE;
     return (im_write*)pw;
 }
 
@@ -62,7 +62,7 @@ im_write* ipng_new_writer(im_out* out, ImErr* err)
 static void pre_img(im_write* wr)
 {
     if (wr->num_frames>0) {
-        wr->err = ERR_ANIM_UNSUPPORTED;  // animation not supported.
+        wr->err = IM_ERR_ANIM_UNSUPPORTED;  // animation not supported.
         return;
     }
 }
@@ -76,14 +76,14 @@ static void emit_header(im_write* wr)
 
     pw->png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,NULL,NULL);
     if (!pw->png_ptr) {
-        wr->err = ERR_NOMEM;
+        wr->err = IM_ERR_NOMEM;
         return;
     }
 
     pw->info_ptr = png_create_info_struct(pw->png_ptr);
     if (!pw->info_ptr)
     {
-        wr->err = ERR_NOMEM;
+        wr->err = IM_ERR_NOMEM;
         return;
     }
 
@@ -92,7 +92,7 @@ static void emit_header(im_write* wr)
     {
        png_destroy_write_struct(&pw->png_ptr, &pw->info_ptr);
        // TODO: check error in im_out?
-       wr->err = ERR_EXTLIB;
+       wr->err = IM_ERR_EXTLIB;
        return;
     }
 
@@ -114,7 +114,7 @@ static void emit_header(im_write* wr)
             i_write_set_internal_fmt(wr, IM_FMT_RGB);
         }
     } else {
-        wr->err = ERR_UNSUPPORTED;  // unsupported fmt
+        wr->err = IM_ERR_UNSUPPORTED;  // unsupported fmt
         return;
     }
 

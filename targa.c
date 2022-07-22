@@ -112,10 +112,10 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
     int count, rep;
     ImFmt fmt;
 
-    *err = ERR_NONE;
+    *err = IM_ERR_NONE;
 
     if (im_in_read(in, &hdr, sizeof(hdr)) != sizeof(hdr) ) {
-        *err = im_in_eof(in) ? ERR_MALFORMED: ERR_FILE;
+        *err = im_in_eof(in) ? IM_ERR_MALFORMED: IM_ERR_FILE;
         goto cleanup;
     }
 
@@ -126,7 +126,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
         /* fallthrough */
     case TGA_TYPE_INDEXED:
         if (!hdr.has_cmap || hdr.pixel_bits != 8 || ncols > 256) {
-            *err = ERR_UNSUPPORTED;
+            *err = IM_ERR_UNSUPPORTED;
             goto cleanup;
         }
         indexed = 1;
@@ -144,7 +144,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
         /* fallthrough */
     case TGA_TYPE_BW:
         if (hdr.pixel_bits != 8) {
-            *err = ERR_UNSUPPORTED;
+            *err = IM_ERR_UNSUPPORTED;
             goto cleanup;
         }
         /* Treat greyscale as 8bpp indexed images */
@@ -152,7 +152,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
         break;
 
     default:
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         goto cleanup;
     }
 
@@ -161,14 +161,14 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
     switch(hdr.pixel_bits) {
     case 8:
         if (!indexed) {
-            *err = ERR_UNSUPPORTED;
+            *err = IM_ERR_UNSUPPORTED;
             goto cleanup;
         }
         break;
 
     case 15:
     case 16:
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         goto cleanup;
         // TODO: Support 15/16 bit formats
 #if 0
@@ -203,13 +203,13 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
         break;
 
     default:
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         goto cleanup;
     }
 
     if ((hdr.flags & TGA_INTERLEAVE_MASK) != TGA_INTERLEAVE_NONE
        || hdr.flags & TGA_ORIGIN_RIGHT) {
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         goto cleanup;
     }
 
@@ -229,7 +229,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
     }
     img = im_img_new(w, h, 1, fmt);
     if (!img) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         goto cleanup;
     }
 
@@ -237,7 +237,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
         int palsiz = ncols * ((hdr.cmap_bits + 7) >> 3);
         if (indexed && !grey) {
             // TODO: read palette!
-            *err = ERR_UNSUPPORTED;
+            *err = IM_ERR_UNSUPPORTED;
             goto cleanup;
 #if 0
             uint8_t *pal = (uint8_t *)imalloc(palsiz), *p = pal;
@@ -278,7 +278,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
 
     if (grey) {
         // TODO
-        *err = ERR_UNSUPPORTED;
+        *err = IM_ERR_UNSUPPORTED;
         goto cleanup;
 #if 0
         SDL_Color *colors = img->format->palette->colors;
@@ -309,7 +309,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
                     if (n > w - x)
                         n = w - x;
                     if (im_in_read(in, dst + x * bpp, n * bpp) != n*bpp) {
-                        *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
+                        *err = im_in_eof(in) ? IM_ERR_MALFORMED:IM_ERR_FILE;
                         goto cleanup;
                     }
                     count -= n;
@@ -330,12 +330,12 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
                 }
 
                 if (im_in_read(in, &c, 1) != 1) {
-                    *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
+                    *err = im_in_eof(in) ? IM_ERR_MALFORMED:IM_ERR_FILE;
                     goto cleanup;
                 }
                 if (c & 0x80) {
                     if (im_in_read(in, &pixel, bpp) != bpp) {
-                        *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
+                        *err = im_in_eof(in) ? IM_ERR_MALFORMED:IM_ERR_FILE;
                         goto cleanup;
                     }
                     rep = (c & 0x7f) + 1;
@@ -345,7 +345,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
             }
         } else {
             if (im_in_read(in, dst, w*bpp) != w*bpp) {
-                *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
+                *err = im_in_eof(in) ? IM_ERR_MALFORMED:IM_ERR_FILE;
                 goto cleanup;
             }
         }
@@ -388,7 +388,7 @@ im_img* iread_targa_image( im_in* in, ImErr* err )
     }
 
 cleanup:
-    if (*err != ERR_NONE) {
+    if (*err != IM_ERR_NONE) {
         if (img) {
             im_img_free(img);
             img = NULL;

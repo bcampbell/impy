@@ -90,26 +90,26 @@ typedef enum ImFileFmt {
 
 // TODO: group into user-facing errors and coder errors
 typedef enum ImErr {
-    ERR_NONE=0,
-    ERR_NOMEM,          // a memory allocation failed
-    ERR_BADPARAM,
-    ERR_COULDNTOPEN,
-    ERR_MALFORMED,      // data looks borked
-    ERR_UNSUPPORTED,    // file has stuff we don't (yet) support
-    ERR_ANIM_UNSUPPORTED,   // format doesn't support animation.
-    ERR_NOCONV,         // unsupported pixel conversion (eg rgb->indexed)
-    ERR_FILE,           // general IO/file error
-    ERR_UNKNOWN_FILE_TYPE,
-    ERR_EXTLIB,         // any unspecified error in external lib
+    IM_ERR_NONE=0,
+    IM_ERR_NOMEM,          // a memory allocation failed
+    IM_ERR_BADPARAM,
+    IM_ERR_COULDNTOPEN,
+    IM_ERR_MALFORMED,      // data looks borked
+    IM_ERR_UNSUPPORTED,    // file has stuff we don't (yet) support
+    IM_ERR_ANIM_UNSUPPORTED,   // format doesn't support animation.
+    IM_ERR_NOCONV,         // unsupported pixel conversion (eg rgb->indexed)
+    IM_ERR_FILE,           // general IO/file error
+    IM_ERR_UNKNOWN_FILE_TYPE,
+    IM_ERR_EXTLIB,         // any unspecified error in external lib
 
-    ERR_UNSUPPORTED_FMT,    // format doesn't support img format
-    ERR_PALETTE_TOO_BIG,    // format doesn't support palette with that many colours
+    IM_ERR_UNSUPPORTED_FMT,    // format doesn't support img format
+    IM_ERR_PALETTE_TOO_BIG,    // format doesn't support palette with that many colours
     // Bad uses of API:
-    ERR_BAD_STATE,      //
-    ERR_NOT_IN_IMG,     // not in write_image() state
-    ERR_TOO_MANY_ROWS,  // read or write too many rows
-    ERR_UNFINISHED_IMG, // read or write incomplete image
-    ERR_NO_PALETTE,     // expected a write_palette() call, or tried to get a
+    IM_ERR_BAD_STATE,      //
+    IM_ERR_NOT_IN_IMG,     // not in write_image() state
+    IM_ERR_TOO_MANY_ROWS,  // read or write too many rows
+    IM_ERR_UNFINISHED_IMG, // read or write incomplete image
+    IM_ERR_NO_PALETTE,     // expected a write_palette() call, or tried to get a
                         // non-existent palette.
 } ImErr;
 

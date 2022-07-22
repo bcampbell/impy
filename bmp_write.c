@@ -48,7 +48,7 @@ im_write* ibmp_new_writer(im_out* out, ImErr* err)
 {
     ibmp_writer* bmpwriter = imalloc(sizeof(ibmp_writer));
     if (!bmpwriter) {
-        *err = ERR_NOMEM;
+        *err = IM_ERR_NOMEM;
         return NULL;
     }
     im_write* writer = (im_write*)bmpwriter;
@@ -58,7 +58,7 @@ im_write* ibmp_new_writer(im_out* out, ImErr* err)
     writer->handler = &bmp_write_handler;
     writer->out = out;
 
-    *err = ERR_NONE;
+    *err = IM_ERR_NONE;
     return writer;
 }
 
@@ -74,7 +74,7 @@ static void ibmp_emit_rows(im_write* writer, unsigned int num_rows, const void *
         size_t cnt = bytes_per_row * num_rows;
         if (im_out_write(writer->out, data, cnt) != cnt) 
         {
-            writer->err = ERR_FILE;
+            writer->err = IM_ERR_FILE;
             return;
         }
     } else {
@@ -84,7 +84,7 @@ static void ibmp_emit_rows(im_write* writer, unsigned int num_rows, const void *
             size_t cnt = bytes_per_row;
             if (im_out_write(writer->out, data, cnt) != cnt) 
             {
-                writer->err = ERR_FILE;
+                writer->err = IM_ERR_FILE;
                 return;
             }
             data += stride;
@@ -99,7 +99,7 @@ static void ibmp_finish(im_write* writer)
 static void ibmp_prep_img(im_write* writer)
 {
     if (writer->num_frames > 0 ) {
-        writer->err = ERR_ANIM_UNSUPPORTED;
+        writer->err = IM_ERR_ANIM_UNSUPPORTED;
         return;
     }
 }
@@ -144,11 +144,11 @@ static void ibmp_emit_header(im_write* wr)
             i_write_set_internal_fmt(wr, IM_FMT_BGR);
         }
     } else {
-        wr->err = ERR_UNSUPPORTED;
+        wr->err = IM_ERR_UNSUPPORTED;
         return;
     }
 
-    if( wr->err != ERR_NONE) {
+    if( wr->err != IM_ERR_NONE) {
         return;
     }
 
@@ -177,18 +177,18 @@ static void ibmp_emit_header(im_write* wr)
         // Write palette as BGRA
         im_convert_fn pal_cvt_fn = i_pick_convert_fn(IM_FMT_RGBA, IM_FMT_BGRA);
         if (!pal_cvt_fn) {
-            wr->err = ERR_NOCONV;
+            wr->err = IM_ERR_NOCONV;
             return;
         }
         size_t bufsize = im_fmt_bytesperpixel(IM_FMT_BGRA) * wr->pal_num_colours;
         uint8_t* buf = imalloc(bufsize);
         if (!buf) {
-            wr->err = ERR_NOMEM;
+            wr->err = IM_ERR_NOMEM;
             return;
         }
         pal_cvt_fn(wr->pal_data, buf, wr->pal_num_colours, 0, NULL);
         if (im_out_write(wr->out, buf, bufsize) != bufsize) {
-            wr->err = ERR_FILE;
+            wr->err = IM_ERR_FILE;
         }
         if (buf) {
             ifree(buf);
@@ -223,7 +223,7 @@ static bool write_file_header(size_t fileSize, size_t imageOffset, im_out* out, 
     assert( p-buf == BMP_FILE_HEADER_SIZE );
 
     if (im_out_write(out, buf, BMP_FILE_HEADER_SIZE) != BMP_FILE_HEADER_SIZE) {
-        *err = ERR_FILE;
+        *err = IM_ERR_FILE;
         return false;
     }
     return true;
@@ -252,7 +252,7 @@ static bool write_bitmapinfoheader(int w, int h,
     assert(p-buf == DIB_BITMAPINFOHEADER_SIZE );
 
     if (im_out_write(out, buf, DIB_BITMAPINFOHEADER_SIZE) != DIB_BITMAPINFOHEADER_SIZE) {
-        *err = ERR_FILE;
+        *err = IM_ERR_FILE;
         return false;
     }
     return true;
@@ -300,7 +300,7 @@ static bool write_bitmapv4header( int w, int h,
     assert(p-buf == DIB_BITMAPV4HEADER_SIZE );
 
     if (im_out_write(out, buf, DIB_BITMAPV4HEADER_SIZE) != DIB_BITMAPV4HEADER_SIZE) {
-        *err = ERR_FILE;
+        *err = IM_ERR_FILE;
         return false;
     }
     return true;

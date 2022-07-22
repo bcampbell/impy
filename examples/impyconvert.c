@@ -46,12 +46,12 @@ int main( int argc, char* argv[])
     free(buf);
 
     err = im_read_finish(reader);
-    if (err != ERR_NONE) {
+    if (err != IM_ERR_NONE) {
         printf("Reader failed: ImErr=%d\n", err);
         return 1;
     }
     err = im_write_finish(writer);
-    if (err != ERR_NONE) {
+    if (err != IM_ERR_NONE) {
         printf("Writer failed: ImErr=%d\n", err);
         return 1;
     }
