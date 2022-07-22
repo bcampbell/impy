@@ -113,7 +113,7 @@ void im_write_img(im_write* writer, unsigned int w, unsigned int h, ImFmt fmt)
     writer->fmt = fmt;
 
     // Assume internal format is same (but backend can call
-    // i_write_set_internal_fmt() to chnage this).
+    // i_write_set_internal_fmt() to change this).
     writer->internal_fmt = fmt;
     writer->row_cvt_fn = NULL;
 
@@ -137,7 +137,9 @@ void i_write_set_internal_fmt(im_write* writer, ImFmt internal_fmt)
         return;
     }
 
-    writer->row_cvt_fn = i_pick_convert_fn(internal_fmt, writer->fmt);
+    // We'll be converting from the external format the caller sends us
+    // to our preferred internal format.
+    writer->row_cvt_fn = i_pick_convert_fn(writer->fmt, internal_fmt);
     if (writer->row_cvt_fn == NULL) {
         writer->err = IM_ERR_NOCONV;
         return;
