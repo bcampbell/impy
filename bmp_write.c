@@ -92,7 +92,7 @@ static void ibmp_emit_header(im_writer* wr)
 {
     unsigned int w = wr->w;
     unsigned int h = wr->h;
-    size_t paletteByteSize = wr->pal_num_colours * 4;   // TODO!!!
+    size_t paletteByteSize = wr->pal_num_colours * 4;
     size_t imageOffset;
     size_t imageByteSize = h*wr->bytes_per_row;
     size_t fileSize;
@@ -221,14 +221,14 @@ static bool write_bitmapinfoheader(int w, int h,
     uint8_t* p = buf;
     encode_u32le(&p, DIB_BITMAPINFOHEADER_SIZE);
     encode_s32le(&p, w);
-    encode_s32le(&p, h);    // +ve => we'll save as bottom-up
+    encode_s32le(&p, -h);               // -ve => we'll save as top-down
     encode_u16le(&p, 1);                // planes
     encode_u16le(&p, bitcount);         // 8, 24, 32
-    encode_u32le(&p, compression);           //biCompression
-    encode_u32le(&p, imageByteSize);    //biSizeImage (0 ok for uncompressed)
+    encode_u32le(&p, compression);      // biCompression
+    encode_u32le(&p, imageByteSize);    // biSizeImage (0 ok for uncompressed)
     encode_s32le(&p, 256);
     encode_s32le(&p, 256);
-    encode_u32le(&p, ncolours);                // biClrUsed
+    encode_u32le(&p, ncolours);         // biClrUsed
     encode_u32le(&p, 0);                // biClrImportant
 
     assert(p-buf == DIB_BITMAPINFOHEADER_SIZE );
@@ -253,14 +253,14 @@ static bool write_bitmapv4header( int w, int h,
     uint8_t* p = buf;
     encode_u32le(&p, DIB_BITMAPV4HEADER_SIZE);
     encode_s32le(&p, w);
-    encode_s32le(&p, h);    // +ve => we'll save as bottom-up
+    encode_s32le(&p, -h);               // -ve => we'll save as top-down
     encode_u16le(&p, 1);                // planes
     encode_u16le(&p, bitcount);         // 8, 24, 32
-    encode_u32le(&p, compression);           //biCompression
-    encode_u32le(&p, imageByteSize);    //biSizeImage (0 ok for uncompressed)
+    encode_u32le(&p, compression);      // biCompression
+    encode_u32le(&p, imageByteSize);    // biSizeImage (0 ok for uncompressed)
     encode_s32le(&p, 256);
     encode_s32le(&p, 256);
-    encode_u32le(&p, ncolours);                // biClrUsed
+    encode_u32le(&p, ncolours);         // biClrUsed
     encode_u32le(&p, 0);                // biClrImportant
 
     encode_u32le(&p, rmask);   // DWORD bV4RedMask;
@@ -287,5 +287,4 @@ static bool write_bitmapv4header( int w, int h,
     }
     return true;
 }
-
 
