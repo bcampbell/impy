@@ -11,7 +11,7 @@
 
 
 typedef struct gif_writer {
-    im_writer base;
+    im_write base;
 
     // gif-specific stuff
     GifFileType *gif;
@@ -23,10 +23,10 @@ typedef struct gif_writer {
 } gif_writer;
 
 
-static void pre_img(im_writer* wr);
-static void emit_header(im_writer* wr);
-static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, int stride);
-static void finish(im_writer* wr);
+static void pre_img(im_write* wr);
+static void emit_header(im_write* wr);
+static void emit_rows(im_write *wr, unsigned int num_rows, const void *data, int stride);
+static void finish(im_write* wr);
 
 
 static int calc_colour_res(int ncolours);
@@ -47,14 +47,14 @@ static struct write_handler gif_write_handler = {
     finish
 };
 
-im_writer* igif_new_writer(im_out* out, ImErr* err)
+im_write* igif_new_writer(im_out* out, ImErr* err)
 {
     gif_writer* gw = imalloc(sizeof(gif_writer));
     if (!gw) {
         *err = ERR_NOMEM;
         return NULL;
     }
-    i_writer_init(&gw->base);
+    i_write_init(&gw->base);
 
     gw->base.handler = &gif_write_handler;
     gw->base.out = out;
@@ -64,16 +64,16 @@ im_writer* igif_new_writer(im_out* out, ImErr* err)
     gw->global_trans = -1;
     gw->local_cm = NULL;
     gw->local_trans = -1;
-    return (im_writer*)gw;
+    return (im_write*)gw;
 }
 
 // Optional hook, called at the last stage of im_begin_img(), but before
 // im_set_palette() et al...
-static void pre_img(im_writer* writer)
+static void pre_img(im_write* writer)
 {
     // Only accept indexed data. We won't do quantisation on-the-fly, so this
     // will fail if the user is planning to send us RGB or whatever.
-    i_writer_set_internal_fmt(writer, IM_FMT_INDEX8);
+    i_write_set_internal_fmt(writer, IM_FMT_INDEX8);
     if (writer->err != ERR_NONE) {
         return;
     }
@@ -81,7 +81,7 @@ static void pre_img(im_writer* writer)
 
 
 // Write out everything up to the start of the row data itself.
-static void emit_header(im_writer* wr)
+static void emit_header(im_write* wr)
 {
     gif_writer* gw = (gif_writer*)wr;
 
@@ -177,7 +177,7 @@ static void emit_header(im_writer* wr)
 }
 
 
-static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, int stride)
+static void emit_rows(im_write *wr, unsigned int num_rows, const void *data, int stride)
 {
     gif_writer* gw = (gif_writer*)wr;
     unsigned int i;
@@ -210,7 +210,7 @@ static bool colormaps_equal(ColorMapObject const* a, ColorMapObject const* b)
 static int output_fn( GifFileType *gif, const GifByteType *buf, int size)
 {
     im_out* out = (im_out*)gif->UserData;
-    return (int)im_write(out, (void*)buf, (size_t)size);
+    return (int)im_out_write(out, (void*)buf, (size_t)size);
 }
 
 
@@ -267,7 +267,7 @@ static int calc_colour_res(int ncolours)
     return 8;
 }
 
-static void finish(im_writer* wr)
+static void finish(im_write* wr)
 {
     gif_writer* gw = (gif_writer*)wr;
 

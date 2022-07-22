@@ -209,17 +209,17 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
     doc->len = 0;
     doc->frames = realloc(NULL, sizeof(SDL_Texture*) * 8);
 
-    im_reader *rdr;
-    rdr = im_reader_open_file(filename, &err);
+    im_read *rdr;
+    rdr = im_read_open_file(filename, &err);
     if (!rdr) {
         goto bailout;
     }
     im_imginfo info;
-    while (im_get_img(rdr, &info)) {
+    while (im_read_img(rdr, &info)) {
         int d = 0;
         Uint32 f = 0;
         // let impy sort out pixelformat and palettes and just give us RGBA
-        im_reader_set_fmt(rdr, IM_FMT_RGBA);
+        im_read_set_fmt(rdr, IM_FMT_RGBA);
         d = 32;
         f = SDL_PIXELFORMAT_RGBA32;
         surf = SDL_CreateRGBSurfaceWithFormat(0, info.w, info.h, d, f);
@@ -261,7 +261,7 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
         doc->len++;
         SDL_FreeSurface(surf);
     }
-    err = im_reader_finish(rdr);
+    err = im_read_finish(rdr);
     rdr = NULL;
 
     if (err!= ERR_NONE) {
@@ -271,7 +271,7 @@ bundle* bundle_load(SDL_Renderer *renderer, const char *filename)
 
 bailout:
     if (rdr) {
-        im_reader_finish(rdr);
+        im_read_finish(rdr);
     }
     if (surf) {
         SDL_FreeSurface(surf);

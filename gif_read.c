@@ -7,16 +7,16 @@
 #include <limits.h>
 #include <gif_lib.h>
 
-static void gif_reader_finish(im_reader *rdr);
-static bool gif_get_img(im_reader *rdr);
-static void gif_read_rows(im_reader *rdr, unsigned int num_rows, void *buf, int stride);
+static void gif_read_finish(im_read *rdr);
+static bool gif_read_img(im_read *rdr);
+static void gif_read_rows(im_read *rdr, unsigned int num_rows, void *buf, int stride);
 
-static void read_file_header(im_reader* rdr);
+static void read_file_header(im_read* rdr);
 
 static read_handler gif_read_handler = {
-    gif_get_img,
+    gif_read_img,
     gif_read_rows,
-    gif_reader_finish
+    gif_read_finish
 };
 
 
@@ -35,7 +35,7 @@ struct rect {
 };
 
 typedef struct gif_reader {
-    im_reader base;
+    im_read base;
 
     // GIF-specific fields
     GifFileType *gif;
@@ -59,22 +59,22 @@ typedef struct gif_reader {
     int disposal;
 } gif_reader;
 
-static void process_image(im_reader *rdr);
-static bool process_extension(im_reader *rdr);
+static void process_image(im_read *rdr);
+static bool process_extension(im_read *rdr);
 static bool apply_palette(GifFileType* gif, im_img* img,  int transparent_idx);
 static bool decode(GifFileType* gif, im_img* destimg, int destx, int desty);
-static bool decode_trns(im_reader *rdr, im_img* destimg, int destx, int desty, uint8_t trns );
+static bool decode_trns(im_read *rdr, im_img* destimg, int destx, int desty, uint8_t trns );
 static void blit( const im_img* src, im_img* dest, int destx, int desty, int w, int h);
 static void drawrect( im_img* img, int xo, int yo, int w, int h, uint8_t c);
 
 static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 {
-    im_in* rdr = (im_in*)gif->UserData;
-    return (int)im_read(rdr, (void*)buf, (size_t)size);
+    im_in* in = (im_in*)gif->UserData;
+    return (int)im_in_read(in, (void*)buf, (size_t)size);
 }
 
 
-im_reader* im_new_gif_reader( im_in* in, ImErr* err )
+im_read* i_new_gif_reader(im_in *in, ImErr *err)
 {
     gif_reader* gr = imalloc(sizeof(gif_reader));
     if (!gr) {
@@ -82,7 +82,7 @@ im_reader* im_new_gif_reader( im_in* in, ImErr* err )
         return NULL;
     }
 
-    i_reader_init(&gr->base);
+    i_read_init(&gr->base);
     gr->base.handler = &gif_read_handler;
     gr->base.in = in;
 
@@ -95,11 +95,11 @@ im_reader* im_new_gif_reader( im_in* in, ImErr* err )
     gr->backup = NULL;
     gr->disposal = DISPOSAL_UNSPECIFIED;
 
-    return (im_reader*)gr;
+    return (im_read*)gr;
 }
 
 
-static void read_file_header(im_reader* rdr)
+static void read_file_header(im_read* rdr)
 {
     gif_reader* gr = (gif_reader*)rdr;
     int giferr;
@@ -136,7 +136,7 @@ static void read_file_header(im_reader* rdr)
 }
 
 
-static void gif_reader_finish(im_reader* rdr)
+static void gif_read_finish(im_read* rdr)
 {
     gif_reader* gr = (gif_reader*)rdr;
 
@@ -164,7 +164,7 @@ static void gif_reader_finish(im_reader* rdr)
 }
 
 // Returns true if a new image is successfully prepped for reading.
-static bool gif_get_img(im_reader* rdr)
+static bool gif_read_img(im_read* rdr)
 {
     gif_reader* gr = (gif_reader*)rdr;
 
@@ -235,7 +235,7 @@ static bool gif_get_img(im_reader* rdr)
     }
 }
 
-static void gif_read_rows(im_reader *rdr, unsigned int num_rows, void *buf, int stride)
+static void gif_read_rows(im_read *rdr, unsigned int num_rows, void *buf, int stride)
 {
     gif_reader* gr = (gif_reader*)rdr;
     // Read rows out from the accumulator image.
@@ -255,7 +255,7 @@ static void gif_read_rows(im_reader *rdr, unsigned int num_rows, void *buf, int 
 
 // fetches the next frame into the accumulator img.
 // Upon error sets the err field.
-static void process_image(im_reader* rdr)
+static void process_image(im_read* rdr)
 {
     gif_reader* gr = (gif_reader*)rdr;
     GifFileType* gif = gr->gif;
@@ -403,7 +403,7 @@ static bool decode( GifFileType* gif, im_img* destimg, int destx, int desty )
 }
 
 
-static bool decode_trns(im_reader* rdr, im_img* destimg, int destx, int desty, uint8_t trns )
+static bool decode_trns(im_read* rdr, im_img* destimg, int destx, int desty, uint8_t trns )
 {
     gif_reader* gr = (gif_reader*)rdr;
     GifFileType* gif = gr->gif;
@@ -455,7 +455,7 @@ static bool decode_trns(im_reader* rdr, im_img* destimg, int destx, int desty, u
 }
 
 
-static bool process_extension(im_reader *rdr)
+static bool process_extension(im_read *rdr)
 {
     gif_reader* gr = (gif_reader*)rdr;
     GifFileType* gif = gr->gif;

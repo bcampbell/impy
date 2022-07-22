@@ -106,10 +106,10 @@ typedef enum ImErr {
     ERR_PALETTE_TOO_BIG,    // format doesn't support palette with that many colours
     // Bad uses of API:
     ERR_BAD_STATE,      //
-    ERR_NOT_IN_IMG,     // not in begin_image() state
+    ERR_NOT_IN_IMG,     // not in write_image() state
     ERR_TOO_MANY_ROWS,  // read or write too many rows
     ERR_UNFINISHED_IMG, // read or write incomplete image
-    ERR_NO_PALETTE,     // expected a set_palette() call, or tried to get a
+    ERR_NO_PALETTE,     // expected a write_palette() call, or tried to get a
                         // non-existent palette.
 } ImErr;
 
@@ -119,7 +119,6 @@ typedef enum ImErr {
  **********/
 
 /* IO abstraction - basically follows stdio.h style */
-// TODO: make these an enum
 #define IM_SEEK_SET 0
 #define IM_SEEK_CUR 1
 #define IM_SEEK_END 2
@@ -128,66 +127,65 @@ typedef struct im_in im_in;
 
 // abstracted interface for reading
 struct im_in {
-    size_t (*read)(im_in*, void* , size_t );
-    int (*seek)(im_in*, long , int);
-    int (*tell)(im_in*);
-    int (*eof)(im_in*);
-    int (*error)(im_in*);
-    int (*close)(im_in*);
+    size_t (*read)(im_in *, void * , size_t );
+    int (*seek)(im_in *, long , int);
+    int (*tell)(im_in *);
+    int (*eof)(im_in *);
+    int (*error)(im_in *);
+    int (*close)(im_in *);
 };
 
 
 // open a file for reading (binary mode)
 // the returned reader uses stdio (fopen, fread etc...)
-extern im_in* im_in_open_file(const char* filename, ImErr* err);
+extern im_in *im_in_open_file(const char *filename, ImErr *err);
 
 // TODO: memory-based reader
 //extern im_in* im_open_mem_reader( const void* data, size_t nbytes );
 
 // Close and free reader
-extern int im_in_close(im_in* in);
+extern int im_in_close(im_in *in);
 
-// im_read reads nbytes from the reader, and returns the actual number read.
-// im_read does not distiguish between EOF and other error conditions, so
+// im_in_read reads nbytes from the reader, and returns the actual number read.
+// im_in_read does not distiguish between EOF and other error conditions, so
 // use im_eof() to check if the end of the data has been hit.
-static inline size_t im_read(im_in* in, void* buf, size_t nbytes)
+static inline size_t im_in_read(im_in *in, void *buf, size_t nbytes)
     { return in->read(in, buf, nbytes); }
 
 // returns 0 for success, non-zero for error
-static inline int im_seek(im_in* in, long pos, int whence)
+static inline int im_in_seek(im_in *in, long pos, int whence)
     { return in->seek(in, pos, whence); }
  
 // returns current position, -1 for error
-static inline int im_tell(im_in* in)
+static inline int im_in_tell(im_in *in)
     { return in->tell(in); }
 
 
-// im_eof returns non-zero if the reader is out of data
-static inline int im_eof(im_in* in)
+// im_eof returns non-zero if the input is out of data
+static inline int im_in_eof(im_in *in)
     { return in->eof(in); }
 
-// im_error returns non-zero if the reader is in error state (including eof)
-static inline int im_error(im_in* in)
+// im_error returns non-zero if the input is in error state (including eof)
+static inline int im_in_error(im_in *in)
     { return in->error(in); }
 
 // abstracted interface for writing
 typedef struct im_out {
-    size_t (*write)(struct im_out*, const void* , size_t);
+    size_t (*write)(struct im_out *, const void *, size_t);
     int (*close)(struct im_out*);
 } im_out;
 
 // open a file for writing
 // (backed by fopen/fwrite etc)
-extern im_out* im_out_open_file( const char* filename, ImErr* err);
+extern im_out* im_out_open_file(const char *filename, ImErr *err);
 //extern im_out* im_open_mem_writer( void* buf, size_t buf_size );
 
 // Close and free writer returns error code...
-extern int im_out_close(im_out* w);
-
+extern int im_out_close(im_out * w);
 
 // Write data out. returns number of bytes successfully written
 // if <nbytes, an error has occurred
-static inline size_t im_write( im_out* w, const void* data, size_t nbytes)
+static inline size_t im_out_write(im_out *w, const void *data, size_t nbytes)
     { return w->write(w,data,nbytes); }
 
 
@@ -198,39 +196,39 @@ static inline size_t im_write( im_out* w, const void* data, size_t nbytes)
 
 // im_guess_file_format tries to guess the most appropriate file format based
 // on the given filename.
-ImFileFmt im_guess_file_format(const char* filename);
+ImFileFmt im_guess_file_format(const char *filename);
 
 
 /****************
  * API for writing
  */
 
-// im_writer is the handle used for writing out files.
+// im_write is the handle used for writing out files.
 // The general sequence is:
-//  1. create an im_writer()
-//  2. call im_begin_img() to describe the image properties.
-//  3. call optional extra functions, such as im_set_palette().
+//  1. create an im_write object
+//  2. call im_write_img() to describe the image properties.
+//  3. call optional extra functions, such as im_write_palette().
 //  4. call im_write_rows one or more times to write the image data.
 //  5. If the format supports it, go back to step 2 to write another image.
-//  6. im_writer_finish() when done.
+//  6. im_write_finish() when done.
 //
-// At any point, you can call im_writer_err() to check the error state of the
+// At any point, you can call im_write_err() to check the error state of the
 // writer. It's safe to call the write functions after an error occurs - they
 // will just act as a no-op.
 // So it's OK to skip error checking just check the final code returned by
 // im_write_finish() to see if the write was successful or not.
 // If an error did occur, there might be partially-written data.
-typedef struct im_writer im_writer;
+typedef struct im_write im_write;
 
-im_writer* im_writer_open_file(const char *filename, ImErr* err);
-im_writer* im_writer_new(ImFileFmt file_fmt, im_out* out, ImErr* err);
+im_write* im_write_open_file(const char *filename, ImErr *err);
+im_write* im_write_new(ImFileFmt file_fmt, im_out *out, ImErr *err);
 
-void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt);
-void im_set_palette(im_writer* writer, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
-void im_write_rows(im_writer *writer, unsigned int num_rows, const void *data, int stride);
+void im_write_img(im_write *writer, unsigned int w, unsigned int h, ImFmt fmt);
+void im_write_palette(im_write *writer, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
+void im_write_rows(im_write *writer, unsigned int num_rows, const void *data, int stride);
 
-ImErr im_writer_finish(im_writer* writer);
-ImErr im_writer_err(im_writer* writer);
+ImErr im_write_finish(im_write *writer);
+ImErr im_write_err(im_write *writer);
 
 
 /*****************
@@ -246,24 +244,22 @@ typedef struct im_imginfo {
     unsigned int pal_num_colours;
 } im_imginfo;
 
-typedef struct im_reader im_reader;
+typedef struct im_read im_read;
 
-im_reader* im_new_gif_reader(im_in *in, ImErr *err);
+im_read* im_read_new(ImFileFmt file_fmt, im_in *in, ImErr *err);
+im_read* im_read_open_file(const char *filename, ImErr *err);
 
-im_reader* im_reader_new(ImFileFmt file_fmt, im_in *in, ImErr *err);
-im_reader* im_reader_open_file(const char *filename, ImErr *err);
+bool im_read_img(im_read *reader, im_imginfo *info);
+void im_read_set_fmt(im_read* rdr, ImFmt fmt);
 
-bool im_get_img(im_reader *reader, im_imginfo *info);
-void im_reader_set_fmt(im_reader* rdr, ImFmt fmt);
-
-ImErr im_reader_err(im_reader *reader);
-void im_read_rows(im_reader *reader, unsigned int num_rows, void *buf, int stride);
+ImErr im_read_err(im_read *reader);
+void im_read_rows(im_read *reader, unsigned int num_rows, void *buf, int stride);
 
 // Fetch the current palette. Assumes buf is big enough for info->pal_num_colours
 // in format pal_fmt.
-void im_read_palette(im_reader *reader, ImFmt pal_fmt, uint8_t *buf);
+void im_read_palette(im_read *reader, ImFmt pal_fmt, uint8_t *buf);
 
-ImErr im_reader_finish(im_reader *reader);
+ImErr im_read_finish(im_read *reader);
 
 #ifdef __cplusplus
 }

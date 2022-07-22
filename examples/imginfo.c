@@ -9,18 +9,18 @@ int main( int argc, char* argv[])
         return 0;
     }
 
-    im_reader* rdr = im_reader_open_file(argv[1], &err);
+    im_read* rdr = im_read_open_file(argv[1], &err);
     if (!rdr) {
         fprintf(stderr,"open failed (err=%d)\n",err);
         return 1;
     }
 
     im_imginfo img;
-    while (im_get_img(rdr, &img)) {
+    while (im_read_img(rdr, &img)) {
         printf("%dx%d\n", img.w, img.h);
     }
 
-    err = im_reader_finish(rdr);
+    err = im_read_finish(rdr);
     if (err!= ERR_NONE) {
         fprintf(stderr,"cleanup failed (err=%d)\n",err);
     }

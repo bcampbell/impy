@@ -38,7 +38,7 @@ static bool is_png(const uint8_t* buf, int nbytes)
 }
 #endif
 
-im_img* iread_png_image(im_in* rdr, ImErr *err)
+im_img* iread_png_image(im_in* in, ImErr *err)
 {
     struct cbdat cbDat = {ERR_NONE,0,NULL};
     png_structp png_ptr;
@@ -85,15 +85,15 @@ im_img* iread_png_image(im_in* rdr, ImErr *err)
         uint8_t buf[4096];
 
         size_t n;
-        n = im_read(rdr, buf, sizeof(buf));
+        n = im_in_read(in, buf, sizeof(buf));
         if (n>0) {
             png_process_data(png_ptr, info_ptr, buf, n);
         } else {
-            if ( im_eof(rdr) ) {
+            if (im_in_eof(in) ) {
                 break;
             }
             // an error has occurred
-            // TODO: set error from rdr
+            // TODO: set error from in
             png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
             if (cbDat.image) {
                im_img_free(cbDat.image);

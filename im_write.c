@@ -8,19 +8,19 @@
 
 // Writing
 
-extern im_writer* ibmp_new_writer(im_out* out, ImErr *err); // bmp_write.c
-extern im_writer* igif_new_writer(im_out* out, ImErr *err); // gif_write.c
-extern im_writer* ipng_new_writer(im_out* out, ImErr* err); // png_write.c
+extern im_write* ibmp_new_writer(im_out* out, ImErr *err); // bmp_write.c
+extern im_write* igif_new_writer(im_out* out, ImErr *err); // gif_write.c
+extern im_write* ipng_new_writer(im_out* out, ImErr* err); // png_write.c
 
-void i_writer_init(im_writer* writer)
+void i_write_init(im_write* writer)
 {
-    memset(writer, 0, sizeof(im_writer));
+    memset(writer, 0, sizeof(im_write));
     writer->err = ERR_NONE;
     writer->state = WRITESTATE_READY;
 }
 
 
-im_writer* im_writer_new(ImFileFmt file_fmt, im_out* out, ImErr* err)
+im_write* im_write_new(ImFileFmt file_fmt, im_out* out, ImErr* err)
 {
     switch (file_fmt) {
         case IM_FILEFMT_PNG:
@@ -35,7 +35,7 @@ im_writer* im_writer_new(ImFileFmt file_fmt, im_out* out, ImErr* err)
     }
 }
 
-ImErr im_writer_finish(im_writer* writer)
+ImErr im_write_finish(im_write* writer)
 {
     ImErr err;
 
@@ -66,15 +66,15 @@ ImErr im_writer_finish(im_writer* writer)
     return err;
 }
 
-ImErr im_writer_err(im_writer* writer)
+ImErr im_write_err(im_write* writer)
     { return writer->err; }
 
 
-im_writer* im_writer_open_file(const char *filename, ImErr* err)
+im_write* im_write_open_file(const char *filename, ImErr* err)
 {
     im_out* out;
     ImFileFmt file_fmt;
-    im_writer* writer;
+    im_write* writer;
     
     file_fmt = im_guess_file_format(filename);
 
@@ -83,7 +83,7 @@ im_writer* im_writer_open_file(const char *filename, ImErr* err)
         return NULL;
     }
 
-    writer = im_writer_new(file_fmt, out, err);
+    writer = im_write_new(file_fmt, out, err);
     if (!writer) {
         // Close and free.
         im_out_close(out);
@@ -94,7 +94,7 @@ im_writer* im_writer_open_file(const char *filename, ImErr* err)
 }
 
 
-void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
+void im_write_img(im_write* writer, unsigned int w, unsigned int h, ImFmt fmt)
 {
     if (writer->err != ERR_NONE) {
         return;
@@ -113,7 +113,7 @@ void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
     writer->fmt = fmt;
 
     // Assume internal format is same (but backend can call
-    // i_writer_set_internal_fmt() to chnage this).
+    // i_write_set_internal_fmt() to chnage this).
     writer->internal_fmt = fmt;
     writer->row_cvt_fn = NULL;
 
@@ -128,7 +128,7 @@ void im_begin_img(im_writer* writer, unsigned int w, unsigned int h, ImFmt fmt)
 
 
 // set internal_fmt and set up pixelformat conversion if required.
-void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt)
+void i_write_set_internal_fmt(im_write* writer, ImFmt internal_fmt)
 {
     if (internal_fmt == writer->fmt) {
         // Same format. Bypass conversion.
@@ -154,7 +154,7 @@ void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt)
 }
 
 
-void im_write_rows(im_writer *writer, unsigned int num_rows, const void *data, int stride)
+void im_write_rows(im_write *writer, unsigned int num_rows, const void *data, int stride)
 {
     if (writer->err != ERR_NONE) {
         return;
@@ -208,7 +208,7 @@ void im_write_rows(im_writer *writer, unsigned int num_rows, const void *data, i
     }
 }
 
-void im_set_palette(im_writer* wr, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours)
+void im_write_palette(im_write* wr, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours)
 {
     if (wr->err != ERR_NONE) {
         return;

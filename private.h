@@ -25,15 +25,15 @@ extern im_convert_fn i_pick_convert_fn(ImFmt srcFmt, ImFmt destFmt);
 
 typedef struct write_handler {
     ImFileFmt file_fmt;
-    void (*pre_img)(im_writer* writer);
-    void (*emit_header)(im_writer* writer);
-    void (*emit_rows)(im_writer *writer, unsigned int num_rows, const void *data, int stride);
-    void (*post_img)(im_writer* writer);
-    void (*finish)(im_writer* writer);
+    void (*pre_img)(im_write* writer);
+    void (*emit_header)(im_write* writer);
+    void (*emit_rows)(im_write *writer, unsigned int num_rows, const void *data, int stride);
+    void (*post_img)(im_write* writer);
+    void (*finish)(im_write* writer);
 } write_handler;
 
 // The common fields shared by all writers.
-typedef struct im_writer {
+typedef struct im_write {
     write_handler* handler;
     ImErr err;
     im_out* out;
@@ -43,7 +43,7 @@ typedef struct im_writer {
     enum {WRITESTATE_READY, WRITESTATE_HEADER, WRITESTATE_BODY} state;
     unsigned int num_frames;
 
-    // Set by im_begin_img()
+    // Set by im_write_img()
     int x_offset;
     int y_offset;
     unsigned int w;
@@ -60,29 +60,29 @@ typedef struct im_writer {
     uint8_t* rowbuf;
     im_convert_fn row_cvt_fn;
 
-    // Palette - set by im_set_palette(), persists between frames.
+    // Palette - set by im_write_palette(), persists between frames.
     // Always stored here in IM_FMT_RGBA format.
     unsigned int pal_num_colours;
     uint8_t* pal_data;
-} im_writer;
+} im_write;
 
 // im_write.c
-void i_writer_init(im_writer* writer);
-void i_writer_set_internal_fmt(im_writer* writer, ImFmt internal_fmt);
+void i_write_init(im_write* writer);
+void i_write_set_internal_fmt(im_write* writer, ImFmt internal_fmt);
 
 /**********
  * read API support
  */
 
 typedef struct read_handler {
-    bool (*get_img)(im_reader* rdr);
-    void (*read_rows)(im_reader *rdr, unsigned int num_rows, void *buf, int stride);
-    void (*finish)(im_reader* rdr);
+    bool (*get_img)(im_read* rdr);
+    void (*read_rows)(im_read *rdr, unsigned int num_rows, void *buf, int stride);
+    void (*finish)(im_read* rdr);
 } read_handler;
 
 
 // The common fields shared by all readers.
-typedef struct im_reader {
+typedef struct im_read {
     read_handler* handler;
     ImErr err;
     im_in* in;
@@ -103,14 +103,16 @@ typedef struct im_reader {
     ImFmt external_fmt;
     uint8_t* rowbuf;
     im_convert_fn row_cvt_fn;
-} im_reader;
+} im_read;
 
 // From im_read.c
-void i_reader_init(im_reader* rdr);
+void i_read_init(im_read* rdr);
 
+// From gif_read.c
+extern im_read* i_new_gif_reader(im_in * in, ImErr *err);
 
 // From generic_read.c
-extern im_reader* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* in, ImErr* err );
+extern im_read* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* in, ImErr* err );
 
 // From various readers.
 im_img* iread_png_image(im_in* rdr, ImErr *err);

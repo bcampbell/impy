@@ -40,37 +40,37 @@ int main( int argc, char* argv[])
 ImErr test_anim(ImFileFmt file_fmt, const char *filename)
 {
     ImErr err;
-    im_writer* wr = im_writer_open_file(filename, &err);
+    im_write* wr = im_write_open_file(filename, &err);
     if (!wr) {
         return err;
     }
 
-    im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
+    im_write_img(wr, 4, 4, IM_FMT_INDEX8);
 
-    im_set_palette(wr, IM_FMT_RGB, 4, pal);
+    im_write_palette(wr, IM_FMT_RGB, 4, pal);
     im_write_rows(wr, 4, frame1, 4);
 
-    im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
+    im_write_img(wr, 4, 4, IM_FMT_INDEX8);
     im_write_rows(wr, 4, frame2, 4);
 
-    err = im_writer_finish(wr);
+    err = im_write_finish(wr);
     return err;
 }
 
 ImErr test_indexed_img(ImFileFmt file_fmt, const char *filename)
 {
     ImErr err;
-    im_writer* wr = im_writer_open_file(filename, &err);
+    im_write* wr = im_write_open_file(filename, &err);
     if (!wr) {
         return err;
     }
 
-    im_begin_img(wr, 4, 4, IM_FMT_INDEX8);
+    im_write_img(wr, 4, 4, IM_FMT_INDEX8);
 
-    im_set_palette(wr, IM_FMT_RGB, 4, pal);
+    im_write_palette(wr, IM_FMT_RGB, 4, pal);
     im_write_rows(wr, 4, frame1, 4);
 
-    err = im_writer_finish(wr);
+    err = im_write_finish(wr);
     return err;
 }
 

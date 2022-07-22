@@ -7,21 +7,21 @@
 #include <assert.h>
 
 
-static void pre_img(im_writer* wr);
-static void emit_header(im_writer* wr);
-static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, int stride);
-static void post_img(im_writer* wr);
-static void finish(im_writer* wr);
+static void pre_img(im_write* wr);
+static void emit_header(im_write* wr);
+static void emit_rows(im_write *wr, unsigned int num_rows, const void *data, int stride);
+static void post_img(im_write* wr);
+static void finish(im_write* wr);
 
-static void emit_palette(im_writer* wr);
+static void emit_palette(im_write* wr);
 static void custom_write(png_structp png_ptr,
     png_bytep data, png_size_t length);
 static void custom_flush(png_structp png_ptr);
 
 
 typedef struct ipng_writer {
-    // embedded im_writer
-    im_writer base;
+    // embedded im_write
+    im_write base;
     // png-specific
     png_structp png_ptr;
     png_infop info_ptr;
@@ -37,7 +37,7 @@ static struct write_handler ipng_write_handler = {
 };
 
 
-im_writer* ipng_new_writer(im_out* out, ImErr* err)
+im_write* ipng_new_writer(im_out* out, ImErr* err)
 {
     ipng_writer* pw = imalloc(sizeof(ipng_writer));
     if (!pw) {
@@ -45,7 +45,7 @@ im_writer* ipng_new_writer(im_out* out, ImErr* err)
         return NULL;
     }
 
-    i_writer_init(&pw->base);
+    i_write_init(&pw->base);
 
     pw->base.handler = &ipng_write_handler;
     pw->base.out = out;
@@ -55,11 +55,11 @@ im_writer* ipng_new_writer(im_out* out, ImErr* err)
     pw->info_ptr = NULL;
 
     *err = ERR_NONE;
-    return (im_writer*)pw;
+    return (im_write*)pw;
 }
 
 
-static void pre_img(im_writer* wr)
+static void pre_img(im_write* wr)
 {
     if (wr->num_frames>0) {
         wr->err = ERR_ANIM_UNSUPPORTED;  // animation not supported.
@@ -67,7 +67,7 @@ static void pre_img(im_writer* wr)
     }
 }
 
-static void emit_header(im_writer* wr)
+static void emit_header(im_write* wr)
 {
     ipng_writer* pw = (ipng_writer*)wr;
 
@@ -104,14 +104,14 @@ static void emit_header(im_writer* wr)
     int color_type;
     if (im_fmt_is_indexed(wr->fmt)) {
         color_type = PNG_COLOR_TYPE_PALETTE;
-        i_writer_set_internal_fmt(wr, IM_FMT_INDEX8);
+        i_write_set_internal_fmt(wr, IM_FMT_INDEX8);
     } else if (im_fmt_has_rgb(wr->fmt)) {
         if (im_fmt_has_alpha(wr->fmt)) {
             color_type = PNG_COLOR_TYPE_RGB_ALPHA;
-            i_writer_set_internal_fmt(wr, IM_FMT_RGBA);
+            i_write_set_internal_fmt(wr, IM_FMT_RGBA);
         } else {
             color_type = PNG_COLOR_TYPE_RGB;
-            i_writer_set_internal_fmt(wr, IM_FMT_RGB);
+            i_write_set_internal_fmt(wr, IM_FMT_RGB);
         }
     } else {
         wr->err = ERR_UNSUPPORTED;  // unsupported fmt
@@ -136,7 +136,7 @@ static void emit_header(im_writer* wr)
 }
 
 
-static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, int stride)
+static void emit_rows(im_write *wr, unsigned int num_rows, const void *data, int stride)
 {
     ipng_writer* pw = (ipng_writer*)wr;
     unsigned int i;
@@ -147,7 +147,7 @@ static void emit_rows(im_writer *wr, unsigned int num_rows, const void *data, in
 }
 
 
-static void emit_palette(im_writer* wr)
+static void emit_palette(im_write* wr)
 {
     png_color rgb[256] = {0};
     png_byte trans[256] = {0};
@@ -175,14 +175,14 @@ static void emit_palette(im_writer* wr)
 
 
 // called after last row written
-static void post_img(im_writer* wr)
+static void post_img(im_write* wr)
 {
     ipng_writer* pw = (ipng_writer*)wr;
     png_write_end(pw->png_ptr, pw->info_ptr);
 }
 
 
-static void finish(im_writer* wr)
+static void finish(im_write* wr)
 {
     ipng_writer* pw = (ipng_writer*)wr;
 
@@ -196,7 +196,7 @@ static void custom_write(png_structp png_ptr,
     png_bytep data, png_size_t length)
 {
     im_out* w = (im_out*)png_get_io_ptr(png_ptr);
-    size_t n = im_write(w, data, length);
+    size_t n = im_out_write(w, data, length);
     if (n!=length) {
         png_error(png_ptr, "write error");
     }

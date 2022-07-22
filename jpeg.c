@@ -35,7 +35,7 @@ static bool match_jpeg_ext(const char* file_ext)
 //
 typedef struct {
     struct jpeg_source_mgr pub;
-    im_in* rdr;
+    im_in* in;
     uint8_t buf[4096];
     bool start_of_file;
 } imreader_src;
@@ -51,7 +51,7 @@ static boolean fill_input_buffer(j_decompress_ptr cinfo)
     imreader_src* mgr = (imreader_src*)cinfo->src;
     size_t nbytes;
 
-    nbytes = im_read(mgr->rdr, mgr->buf, sizeof(mgr->buf));
+    nbytes = im_in_read(mgr->in, mgr->buf, sizeof(mgr->buf));
     if (nbytes <= 0) {
         // no error/eof return from jpeg_source_mgr,
         // we either just throw a fatal error, or synthesize
@@ -95,7 +95,7 @@ static void term_source(j_decompress_ptr cinfo)
 {
 }
 
-static imreader_src* init_im_in_src( j_decompress_ptr cinfo, im_in* rdr)
+static imreader_src* init_im_in_src( j_decompress_ptr cinfo, im_in* in)
 {
     imreader_src* mgr = imalloc(sizeof(imreader_src));
 
@@ -107,7 +107,7 @@ static imreader_src* init_im_in_src( j_decompress_ptr cinfo, im_in* rdr)
     mgr->pub.bytes_in_buffer = 0;       // force a fill upon first read
     mgr->pub.next_input_byte = NULL;
 
-    mgr->rdr = rdr;
+    mgr->in = in;
 
     cinfo->src = (struct jpeg_source_mgr*)mgr;
     return mgr;
@@ -132,7 +132,7 @@ void my_error_exit(j_common_ptr cinfo)
 //------------------------------------------------------
 //
 
-im_img* iread_jpeg_image( im_in* rdr, ImErr* err )
+im_img* iread_jpeg_image( im_in* in, ImErr* err )
 {
     struct jpeg_decompress_struct cinfo;
     my_error_mgr jerr;
@@ -143,7 +143,7 @@ im_img* iread_jpeg_image( im_in* rdr, ImErr* err )
 
     jpeg_create_decompress(&cinfo);
 
-    src = init_im_in_src(&cinfo, rdr);
+    src = init_im_in_src(&cinfo, in);
 
     /* We set up the normal JPEG error routines, then override error_exit. */
     cinfo.err = jpeg_std_error(&jerr.pub);

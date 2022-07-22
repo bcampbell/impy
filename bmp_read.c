@@ -64,45 +64,45 @@ bool im_ext_match_bmp(const char* file_ext)
 }
 
 
-static bool read_file_header(bmp_state *bmp, im_in* rdr, ImErr* err);
-static bool read_bitmap_header(bmp_state *bmp, im_in* rdr, ImErr* err);
-static bool read_colour_table(bmp_state* bmp, im_in* rdr, ImErr* err);
-static im_img* read_image(bmp_state* bmp, im_in* rdr, ImErr* err);
+static bool read_file_header(bmp_state *bmp, im_in* in, ImErr* err);
+static bool read_bitmap_header(bmp_state *bmp, im_in* in, ImErr* err);
+static bool read_colour_table(bmp_state* bmp, im_in* in, ImErr* err);
+static im_img* read_image(bmp_state* bmp, im_in* in, ImErr* err);
 static bool cook_colour_table(bmp_state* bmp, im_img* img, ImErr* err);
-static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err);
-static bool read_img_24_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err);
-static bool read_img_32_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err);
-static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err);
-static bool read_img_packed_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err);
-static bool read_img_8_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err);
-static bool read_img_BI_RLE8( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err);
-static bool read_img_BI_RLE4( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err);
+static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
+static bool read_img_24_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
+static bool read_img_32_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
+static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
+static bool read_img_packed_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
+static bool read_img_8_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
+static bool read_img_BI_RLE8( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
+static bool read_img_BI_RLE4( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
 
-im_img* iread_bmp_image(im_in* rdr, ImErr* err)
+im_img* iread_bmp_image(im_in* in, ImErr* err)
 {
     bmp_state bmp = {0};
     im_img* img = NULL;
 
-    if (!read_file_header(&bmp, rdr, err)) {
+    if (!read_file_header(&bmp, in, err)) {
         goto cleanup;
     }
 
-    if (!read_bitmap_header(&bmp, rdr, err)) {
+    if (!read_bitmap_header(&bmp, in, err)) {
         goto cleanup;
     }
 
     // TODO: V3 has bit masks in colour table for bitcount>=16
-    if (!read_colour_table(&bmp, rdr, err)) {
+    if (!read_colour_table(&bmp, in, err)) {
         goto cleanup;
     }
 
     // seek to image data
-    if (im_seek(rdr, bmp.image_offset, IM_SEEK_SET) != 0) {
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+    if (im_in_seek(in, bmp.image_offset, IM_SEEK_SET) != 0) {
+        *err = im_in_eof(in) ? ERR_MALFORMED : ERR_FILE;
         goto cleanup;
     }
 
-    img = read_image(&bmp, rdr, err);
+    img = read_image(&bmp, in, err);
     if (img == NULL) {
         goto cleanup;
     }
@@ -124,13 +124,13 @@ typedef struct tagBITMAPFILEHEADER {
 } BITMAPFILEHEADER, *PBITMAPFILEHEADER;
 */
 
-static bool read_file_header(bmp_state *bmp, im_in* rdr, ImErr* err) {
+static bool read_file_header(bmp_state *bmp, im_in* in, ImErr* err) {
     uint8_t buf[BMP_FILE_HEADER_SIZE];
     uint8_t* p;
 
     // parse the file header
-    if (im_read(rdr,buf, BMP_FILE_HEADER_SIZE) != BMP_FILE_HEADER_SIZE) {
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+    if (im_in_read(in,buf, BMP_FILE_HEADER_SIZE) != BMP_FILE_HEADER_SIZE) {
+        *err = im_in_eof(in) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
 
@@ -173,7 +173,7 @@ typedef struct tagBITMAPINFOHEADER {
 */
 
 
-static bool read_bitmap_header(bmp_state *bmp, im_in* rdr, ImErr* err)
+static bool read_bitmap_header(bmp_state *bmp, im_in* in, ImErr* err)
 {
     uint8_t buf[ DIB_MAX_HEADER_SIZE ];
 
@@ -185,8 +185,8 @@ static bool read_bitmap_header(bmp_state *bmp, im_in* rdr, ImErr* err)
     size_t imagesize;
 
     // read the dib header (variable size)
-    if(im_read(rdr, buf, 4) != 4 ) {
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+    if(im_in_read(in, buf, 4) != 4 ) {
+        *err = im_in_eof(in) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
 
@@ -199,8 +199,8 @@ static bool read_bitmap_header(bmp_state *bmp, im_in* rdr, ImErr* err)
     }
 
     // read in rest of header
-    if(im_read(rdr, p, headersize-4) != headersize-4 ) {
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+    if(im_in_read(in, p, headersize-4) != headersize-4 ) {
+        *err = im_in_eof(in) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
 
@@ -301,7 +301,7 @@ static bool read_bitmap_header(bmp_state *bmp, im_in* rdr, ImErr* err)
     return true;
 }
 
-static bool read_colour_table(bmp_state* bmp, im_in* rdr, ImErr* err)
+static bool read_colour_table(bmp_state* bmp, im_in* in, ImErr* err)
 {
     int nbytes;
 
@@ -317,8 +317,8 @@ static bool read_colour_table(bmp_state* bmp, im_in* rdr, ImErr* err)
         nbytes = 4*bmp->ncolours;
     }
 
-    if (im_read(rdr,bmp->rawcolours,nbytes) != nbytes) {
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+    if (im_in_read(in,bmp->rawcolours,nbytes) != nbytes) {
+        *err = im_in_eof(in) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
 
@@ -326,7 +326,7 @@ static bool read_colour_table(bmp_state* bmp, im_in* rdr, ImErr* err)
 }
 
 
-static im_img* read_image(bmp_state* bmp, im_in* rdr, ImErr* err)
+static im_img* read_image(bmp_state* bmp, im_in* in, ImErr* err)
 {
     im_img* img=NULL;
     ImFmt fmt;
@@ -356,36 +356,36 @@ static im_img* read_image(bmp_state* bmp, im_in* rdr, ImErr* err)
 
 
     if (bmp->bitcount==4 && bmp->compression==BI_RLE4 ) {
-        if (!read_img_BI_RLE4(bmp,rdr,img,err)) {
+        if (!read_img_BI_RLE4(bmp,in,img,err)) {
             goto bailout;
         }
     } else if (bmp->bitcount<8 && bmp->compression==BI_RGB) {
-        if (!read_img_packed_BI_RGB(bmp,rdr,img,err)) {
+        if (!read_img_packed_BI_RGB(bmp,in,img,err)) {
             goto bailout;
         }
     } else if (bmp->bitcount==8 && bmp->compression==BI_RGB) {
-        if (!read_img_8_BI_RGB(bmp,rdr,img,err)) {
+        if (!read_img_8_BI_RGB(bmp,in,img,err)) {
             goto bailout;
         }
     } else if (bmp->bitcount==8 && bmp->compression==BI_RLE8 ) {
-        if (!read_img_BI_RLE8(bmp,rdr,img,err)) {
+        if (!read_img_BI_RLE8(bmp,in,img,err)) {
             goto bailout;
         }
     } else if (bmp->bitcount==16) {
-        if (!read_img_16_BI_BITFIELDS(bmp,rdr,img,err)) {
+        if (!read_img_16_BI_BITFIELDS(bmp,in,img,err)) {
             goto bailout;
         }
     } else if (bmp->bitcount==24) {
-        if (!read_img_24_BI_RGB(bmp,rdr,img,err)) {
+        if (!read_img_24_BI_RGB(bmp,in,img,err)) {
             goto bailout;
         }
     } else if (bmp->bitcount==32) {
         if (bmp->compression==BI_RGB) {
-            if (!read_img_32_BI_RGB(bmp,rdr,img,err)) {
+            if (!read_img_32_BI_RGB(bmp,in,img,err)) {
                 goto bailout;
             }
         } else if (bmp->compression==BI_BITFIELDS) {
-            if (!read_img_32_BI_BITFIELDS(bmp,rdr,img,err)) {
+            if (!read_img_32_BI_BITFIELDS(bmp,in,img,err)) {
                 goto bailout;
             }
         } else {
@@ -438,7 +438,7 @@ static bool cook_colour_table(bmp_state* bmp, im_img* img, ImErr* err)
 
 // could be handled by read_img_packed_BI_RGB(), but a  special case seems reasonable
 // (this'll be quicker because it doesn't have to faff about with bitmasking)
-static bool read_img_8_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err)
+static bool read_img_8_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* err)
 {
     uint8_t* src;
     uint8_t* dest;
@@ -446,8 +446,8 @@ static bool read_img_8_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* e
 
     assert(bmp->linebuf);
     for (y=0; y<bmp->h; ++y) {
-        if (im_read(rdr,bmp->linebuf, bmp->srclinesize) != bmp->srclinesize) {
-            *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+        if (im_in_read(in,bmp->linebuf, bmp->srclinesize) != bmp->srclinesize) {
+            *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
             return false;
         }
         dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
@@ -475,7 +475,7 @@ static int calc_shift(uint32_t mask)
 
 
 // handle 16bit, BI_BITFIELDS
-static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err)
+static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_in* in, im_img* img, ImErr* err)
 {
     uint8_t* src;
     uint8_t* dest;
@@ -492,8 +492,8 @@ static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_in* rdr, im_img* img, I
     }
 
     for (y=0; y<bmp->h; ++y) {
-        if (im_read(rdr,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
-            *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+        if (im_in_read(in,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
+            *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
             return false;
         }
         dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
@@ -529,15 +529,15 @@ static bool read_img_16_BI_BITFIELDS( bmp_state* bmp, im_in* rdr, im_img* img, I
 
 
 // BI_RGB only - no fancy bitfield shenanigans needed
-static bool read_img_24_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err)
+static bool read_img_24_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* err)
 {
     uint8_t* src;
     uint8_t* dest;
     int x,y;
 
     for (y=0; y<bmp->h; ++y) {
-        if (im_read(rdr,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
-            *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+        if (im_in_read(in,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
+            *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
             return false;
         }
         dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
@@ -554,14 +554,14 @@ static bool read_img_24_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* 
     return true;
 }
 
-static bool read_img_32_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err)
+static bool read_img_32_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* err)
 {
     // TODO
     *err = ERR_UNSUPPORTED;
     return false;
 }
 
-static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err)
+static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_in* in, im_img* img, ImErr* err)
 {
     uint8_t* src;
     uint8_t* dest;
@@ -578,8 +578,8 @@ static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_in* rdr, im_img* img, I
 
     //
     for (y=0; y<bmp->h; ++y) {
-        if (im_read(rdr,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
-            *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+        if (im_in_read(in,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
+            *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
             return false;
         }
         dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
@@ -611,7 +611,7 @@ static bool read_img_32_BI_BITFIELDS( bmp_state* bmp, im_in* rdr, im_img* img, I
 }
 
 // handle BI_RGB 1,2,4 bit-packed images
-static bool read_img_packed_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err)
+static bool read_img_packed_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* err)
 {
     uint8_t* src;
     uint8_t* dest;
@@ -630,8 +630,8 @@ static bool read_img_packed_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImE
     }
     assert(bmp->linebuf);
     for (y=0; y<bmp->h; ++y) {
-        if (im_read(rdr,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
-            *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+        if (im_in_read(in,bmp->linebuf,bmp->srclinesize) != bmp->srclinesize) {
+            *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
             return false;
         }
         dest = im_img_row(img, bmp->topdown ? y : (bmp->h-1)-y);
@@ -652,7 +652,7 @@ static bool read_img_packed_BI_RGB( bmp_state* bmp, im_in* rdr, im_img* img, ImE
 
 
 
-static bool read_img_BI_RLE8( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err)
+static bool read_img_BI_RLE8( bmp_state* bmp, im_in* in, im_img* img, ImErr* err)
 {
     uint8_t* buf;
     uint8_t* src;
@@ -668,9 +668,9 @@ static bool read_img_BI_RLE8( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* er
         return false;
     }
 
-    if (im_read(rdr,buf,bmp->imagesize) != bmp->imagesize) {
+    if (im_in_read(in,buf,bmp->imagesize) != bmp->imagesize) {
         ifree(buf);
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+        *err = im_in_eof(in) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
 
@@ -757,7 +757,7 @@ borked:
 }
 
 
-static bool read_img_BI_RLE4( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* err)
+static bool read_img_BI_RLE4( bmp_state* bmp, im_in* in, im_img* img, ImErr* err)
 {
     uint8_t* buf;
     uint8_t* src;
@@ -773,9 +773,9 @@ static bool read_img_BI_RLE4( bmp_state* bmp, im_in* rdr, im_img* img, ImErr* er
         return false;
     }
 
-    if (im_read(rdr,buf,bmp->imagesize) != bmp->imagesize) {
+    if (im_in_read(in,buf,bmp->imagesize) != bmp->imagesize) {
         ifree(buf);
-        *err = im_eof(rdr) ? ERR_MALFORMED : ERR_FILE;
+        *err = im_in_eof(in) ? ERR_MALFORMED : ERR_FILE;
         return false;
     }
 

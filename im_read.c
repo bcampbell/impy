@@ -6,9 +6,9 @@
 //#include <stdio.h>
 #include <assert.h>
 
-void i_reader_init(im_reader* rdr)
+void i_read_init(im_read* rdr)
 {
-    memset(rdr, 0, sizeof(im_reader));
+    memset(rdr, 0, sizeof(im_read));
     rdr->err = ERR_NONE;
     rdr->state = READSTATE_READY;
     rdr->external_fmt = IM_FMT_NONE;
@@ -16,11 +16,11 @@ void i_reader_init(im_reader* rdr)
 
 // Reading
 
-im_reader* im_reader_new(ImFileFmt file_fmt, im_in* in, ImErr* err)
+im_read* im_read_new(ImFileFmt file_fmt, im_in* in, ImErr* err)
 {
     switch (file_fmt) {
         case IM_FILEFMT_GIF:
-            return im_new_gif_reader(in, err);
+            return i_new_gif_reader(in, err);
         case IM_FILEFMT_PNG:
             return im_new_generic_reader(iread_png_image, in ,err);
         case IM_FILEFMT_BMP:
@@ -37,11 +37,11 @@ im_reader* im_reader_new(ImFileFmt file_fmt, im_in* in, ImErr* err)
     }
 }
 
-im_reader* im_reader_open_file(const char* filename, ImErr* err)
+im_read* im_read_open_file(const char* filename, ImErr* err)
 {
     im_in* in;
     ImFileFmt file_fmt;
-    im_reader* rdr;
+    im_read* rdr;
     
     // TODO: magic cookie sniffing instead of extension guessing here!
     file_fmt = im_guess_file_format(filename);
@@ -51,7 +51,7 @@ im_reader* im_reader_open_file(const char* filename, ImErr* err)
         return NULL;
     }
 
-    rdr = im_reader_new(file_fmt, in, err);
+    rdr = im_read_new(file_fmt, in, err);
     if (!rdr) {
         im_in_close(in);    // also frees in
         return NULL;
@@ -61,7 +61,7 @@ im_reader* im_reader_open_file(const char* filename, ImErr* err)
     return rdr;
 }
 
-bool im_get_img(im_reader* rdr, im_imginfo* info)
+bool im_read_img(im_read* rdr, im_imginfo* info)
 {
     bool got;
 
@@ -80,7 +80,7 @@ bool im_get_img(im_reader* rdr, im_imginfo* info)
     return got;
 }
 
-void im_reader_set_fmt(im_reader* rdr, ImFmt fmt)
+void im_read_set_fmt(im_read* rdr, ImFmt fmt)
 {
     if (rdr->err != ERR_NONE) {
         return;
@@ -94,7 +94,7 @@ void im_reader_set_fmt(im_reader* rdr, ImFmt fmt)
     rdr->external_fmt = fmt;
 }
 
-ImErr im_reader_finish(im_reader* rdr)
+ImErr im_read_finish(im_read* rdr)
 {
     ImErr err;
     // Perform any required format-specific cleanup.
@@ -121,12 +121,12 @@ ImErr im_reader_finish(im_reader* rdr)
 }
 
 
-ImErr im_reader_err(im_reader* rdr)
+ImErr im_read_err(im_read* rdr)
     { return rdr->err; }
 
 
 
-static void enter_READSTATE_BODY(im_reader* rdr)
+static void enter_READSTATE_BODY(im_read* rdr)
 {
     rdr->state = READSTATE_BODY;
     rdr->rows_read = 0;
@@ -158,7 +158,7 @@ static void enter_READSTATE_BODY(im_reader* rdr)
     }
 }
 
-void im_read_rows(im_reader *rdr, unsigned int num_rows, void *buf, int stride)
+void im_read_rows(im_read *rdr, unsigned int num_rows, void *buf, int stride)
 {
     int i;
 
@@ -203,7 +203,7 @@ void im_read_rows(im_reader *rdr, unsigned int num_rows, void *buf, int stride)
     }
 }
 
-void im_read_palette(im_reader* rdr, ImFmt pal_fmt, uint8_t* buf)
+void im_read_palette(im_read* rdr, ImFmt pal_fmt, uint8_t* buf)
 {
     if (rdr->err != ERR_NONE) {
         return;

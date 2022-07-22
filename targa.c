@@ -94,7 +94,7 @@ enum tga_type {
 #define SETLE16(p, v) ((p)[0] = (v), (p)[1] = (v) >> 8)
 
 /* Load a TGA type image from an im_in */
-im_img* iread_targa_image( im_in* rdr, ImErr* err )
+im_img* iread_targa_image( im_in* in, ImErr* err )
 {
     struct TGAheader hdr;
     int rle = 0;
@@ -114,8 +114,8 @@ im_img* iread_targa_image( im_in* rdr, ImErr* err )
 
     *err = ERR_NONE;
 
-    if (im_read(rdr, &hdr, sizeof(hdr)) != sizeof(hdr) ) {
-        *err = im_eof(rdr) ? ERR_MALFORMED: ERR_FILE;
+    if (im_in_read(in, &hdr, sizeof(hdr)) != sizeof(hdr) ) {
+        *err = im_in_eof(in) ? ERR_MALFORMED: ERR_FILE;
         goto cleanup;
     }
 
@@ -215,7 +215,7 @@ im_img* iread_targa_image( im_in* rdr, ImErr* err )
 
 
     //SDL_RWseek(src, hdr.infolen, RW_SEEK_CUR); /* skip info field */
-    im_seek(rdr, hdr.infolen, IM_SEEK_CUR);
+    im_in_seek(in, hdr.infolen, IM_SEEK_CUR);
 
     w = LE16(hdr.width);
     h = LE16(hdr.height);
@@ -272,7 +272,7 @@ im_img* iread_targa_image( im_in* rdr, ImErr* err )
 #endif                
         } else {
             /* skip unneeded colormap */
-            im_seek(rdr, palsiz, IM_SEEK_CUR);
+            im_in_seek(in, palsiz, IM_SEEK_CUR);
         }
     }
 
@@ -308,8 +308,8 @@ im_img* iread_targa_image( im_in* rdr, ImErr* err )
                     int n = count;
                     if (n > w - x)
                         n = w - x;
-                    if (im_read(rdr, dst + x * bpp, n * bpp) != n*bpp) {
-                        *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+                    if (im_in_read(in, dst + x * bpp, n * bpp) != n*bpp) {
+                        *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
                         goto cleanup;
                     }
                     count -= n;
@@ -329,13 +329,13 @@ im_img* iread_targa_image( im_in* rdr, ImErr* err )
                         break;
                 }
 
-                if (im_read(rdr, &c, 1) != 1) {
-                    *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+                if (im_in_read(in, &c, 1) != 1) {
+                    *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
                     goto cleanup;
                 }
                 if (c & 0x80) {
-                    if (im_read(rdr, &pixel, bpp) != bpp) {
-                        *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+                    if (im_in_read(in, &pixel, bpp) != bpp) {
+                        *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
                         goto cleanup;
                     }
                     rep = (c & 0x7f) + 1;
@@ -344,8 +344,8 @@ im_img* iread_targa_image( im_in* rdr, ImErr* err )
                 }
             }
         } else {
-            if (im_read(rdr, dst, w*bpp) != w*bpp) {
-                *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+            if (im_in_read(in, dst, w*bpp) != w*bpp) {
+                *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
                 goto cleanup;
             }
         }

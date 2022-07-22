@@ -49,17 +49,17 @@ typedef struct header {
     uint8_t *scanbuf;
 } header;
 
-static bool read_header( header* pcx, im_in* rdr, ImErr *err);
-static void decode_scanline( header* pcx, im_in* rdr);
+static bool read_header( header* pcx, im_in* in, ImErr *err);
+static void decode_scanline( header* pcx, im_in* in);
 
 
-im_img* iread_pcx_image( im_in* rdr, ImErr* err )
+im_img* iread_pcx_image( im_in* in, ImErr* err )
 {
     im_img* img = NULL;
     header pcx = {0};
     *err = ERR_NONE;
 
-    if (!read_header( &pcx, rdr, err)) {
+    if (!read_header( &pcx, in, err)) {
         goto cleanup;
     }
 
@@ -76,14 +76,14 @@ im_img* iread_pcx_image( im_in* rdr, ImErr* err )
         }
 
         for (y=0; y<pcx.h; ++y) {
-            decode_scanline(&pcx, rdr);
+            decode_scanline(&pcx, in);
             memcpy( im_img_row(img,y), pcx.scanbuf, pcx.w);
         }
 
         // need to seek back from end of file to get to palette. ugh.
         // some files have dodgy RLE, so you can't always tell where the image data ends.
-        im_seek(rdr, -(1+(256*3)), IM_SEEK_END);
-        if (im_read(rdr, cmap, 1+(256*3)) != 1+(256*3)) {
+        im_in_seek(in, -(1+(256*3)), IM_SEEK_END);
+        if (im_in_read(in, cmap, 1+(256*3)) != 1+(256*3)) {
             *err = ERR_MALFORMED;
             goto cleanup;
         }
@@ -109,7 +109,7 @@ im_img* iread_pcx_image( im_in* rdr, ImErr* err )
             uint8_t* b = pcx.scanbuf + (pcx.bytesperline*2);
             uint8_t* dest = im_img_row(img,y);
             int x;
-            decode_scanline(&pcx, rdr);
+            decode_scanline(&pcx, in);
             for(x=0;x<pcx.w; ++x) {
                 *dest++ = *r++;
                 *dest++ = *g++;
@@ -141,13 +141,13 @@ cleanup:
 
 
 
-static bool read_header( header* pcx, im_in* rdr, ImErr *err)
+static bool read_header( header* pcx, im_in* in, ImErr *err)
 {
     uint8_t buf[128];
     uint8_t* p;
 
-    if (im_read( rdr, buf, 128) != 128) {
-        *err = im_eof(rdr) ? ERR_MALFORMED:ERR_FILE;
+    if (im_in_read( in, buf, 128) != 128) {
+        *err = im_in_eof(in) ? ERR_MALFORMED:ERR_FILE;
         return false;
     }
 
@@ -195,7 +195,7 @@ static bool read_header( header* pcx, im_in* rdr, ImErr *err)
 
 // decode a line (can be multiple planes, as rle can span planes)
 // we're pretty tolerant of dodgy data.
-static void decode_scanline( header* pcx, im_in* rdr)
+static void decode_scanline( header* pcx, im_in* in)
 {
     int outcnt = (pcx->bytesperline * pcx->planes);
     uint8_t val,reps;
@@ -204,17 +204,17 @@ static void decode_scanline( header* pcx, im_in* rdr)
     reps = 0;
     while (outcnt>0) {
         if (reps==0) {
-            if (im_read(rdr,&val,1) != 1) {
+            if (im_in_read(in,&val,1) != 1) {
                 //printf("ERROR: BADBYTE\n");
-                /**err = im_eof(rdr)? ERR_MALFORMED:ERR_FILE;
+                /**err = im_eof(in)? ERR_MALFORMED:ERR_FILE;
                 return false;
                 */
                 val=0;
             }
             if (val >= 0xc0) {
                 reps = (val - 0xc0);
-                if (im_read(rdr,&val,1) != 1) {
-                    //*err = im_eof(rdr)? ERR_MALFORMED:ERR_FILE;
+                if (im_in_read(in,&val,1) != 1) {
+                    //*err = im_eof(in)? ERR_MALFORMED:ERR_FILE;
                     //printf("ERROR: BADREP\n");
                     val=0;
                 }

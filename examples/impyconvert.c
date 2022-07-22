@@ -5,8 +5,8 @@
 int main( int argc, char* argv[])
 {
     ImErr err;
-    im_reader* reader;
-    im_writer* writer;
+    im_read* reader;
+    im_write* writer;
     im_imginfo inf;
     uint8_t *buf = NULL;
     unsigned int y;
@@ -16,25 +16,24 @@ int main( int argc, char* argv[])
         return 1;
     }
 
-    reader = im_reader_open_file(argv[1], &err);
+    reader = im_read_open_file(argv[1], &err);
     if (!reader) {
-        printf("im_reader_open_file() failed (ImErr=%d)\n", err);
+        printf("im_read_open_file() failed (ImErr=%d)\n", err);
         return 1;
     }
-    writer = im_writer_open_file(argv[2], &err);
+    writer = im_write_open_file(argv[2], &err);
     if (!writer) {
-        printf("im_writer_open_file() failed (ImErr=%d)\n", err);
+        printf("im_write_open_file() failed (ImErr=%d)\n", err);
         return 1;
     }
 
-    while(im_get_img(reader, &inf)) {
-        im_begin_img(writer, inf.w, inf.h, inf.fmt);
-        // TODO: PALETTE!!!
+    while(im_read_img(reader, &inf)) {
+        im_write_img(writer, inf.w, inf.h, inf.fmt);
         printf("img: %dx%d fmt=%d num_colours=%d\n", inf.w, inf.h, inf.fmt, inf.pal_num_colours);
         if (inf.pal_num_colours > 0) {
             buf = realloc(buf, inf.pal_num_colours * im_fmt_bytesperpixel(IM_FMT_RGBA));
             im_read_palette(reader, IM_FMT_RGBA, buf);
-            im_set_palette(writer, IM_FMT_RGBA, inf.pal_num_colours, buf);
+            im_write_palette(writer, IM_FMT_RGBA, inf.pal_num_colours, buf);
         }
 
         size_t bytes_per_row = inf.w * im_fmt_bytesperpixel(inf.fmt);
@@ -46,12 +45,12 @@ int main( int argc, char* argv[])
     }
     free(buf);
 
-    err = im_reader_finish(reader);
+    err = im_read_finish(reader);
     if (err != ERR_NONE) {
         printf("Reader failed: ImErr=%d\n", err);
         return 1;
     }
-    err = im_writer_finish(writer);
+    err = im_write_finish(writer);
     if (err != ERR_NONE) {
         printf("Writer failed: ImErr=%d\n", err);
         return 1;
