@@ -1,6 +1,12 @@
 #ifndef IMPY_H
 #define IMPY_H
 
+/* Impy
+ *
+ * A library to load/save images, including animated images, supporting
+ * a variety of file formats.
+ */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -9,12 +15,10 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
-
 // The pixelformats we support.
-// All byte-oriented at the moment, but likely to change.
 // X = pad byte
-// A = alpha
-// R,G,B = colour components
+// A = alpha byte
+// R,G,B = colour components (bytes)
 typedef enum ImFmt {
     IM_FMT_NONE = 0,
     IM_FMT_INDEX8,  // Bytes indexing a palette.
@@ -31,49 +35,6 @@ typedef enum ImFmt {
     IM_FMT_ALPHA,
     IM_FMT_LUMINANCE    // Not really supported yet.
 } ImFmt;
-
-// TODO: bit encoding for pixelformats. Want to encode:
-// type: 0=rgb, 1=indexed, others... (2 bits)
-// alpha: 1 bit
-// rgb order: 0=rgb 1=bgr (1 bit)
-// bytesperpixel 0-16 (5 bits)
-// etc
-
-// Return true if fmt is intended to index into a palette.
-static inline bool im_fmt_is_indexed(ImFmt fmt)
-    {return fmt == IM_FMT_INDEX8; }
-
-// Return true if fmt has RGB components (in any order).
-static inline bool im_fmt_has_rgb(ImFmt fmt)
-{
-    return fmt != IM_FMT_INDEX8 &&
-        fmt != IM_FMT_ALPHA &&
-        fmt != IM_FMT_LUMINANCE;
-}
-
-// Return true if fmt has an alpha channel.
-static inline bool im_fmt_has_alpha(ImFmt fmt)
-{
-    return fmt == IM_FMT_RGBA ||
-        fmt == IM_FMT_BGRA ||
-        fmt == IM_FMT_ARGB ||
-        fmt == IM_FMT_ABGR ||
-        fmt == IM_FMT_ALPHA;
-}
-
-static inline size_t im_fmt_bytesperpixel(ImFmt fmt)
-{
-    size_t s = 0;
-    if (im_fmt_is_indexed(fmt)) {
-        s += 1;
-    } else if (im_fmt_has_rgb(fmt)) {
-        s += 3;
-    }
-    if (im_fmt_has_alpha(fmt)) {
-        s += 1;
-    }
-    return s;
-}
 
 // Supported file formats.
 typedef enum ImFileFmt {
@@ -110,9 +71,204 @@ typedef enum ImErr {
     IM_ERR_TOO_MANY_ROWS,  // read or write too many rows
     IM_ERR_UNFINISHED_IMG, // read or write incomplete image
     IM_ERR_NO_PALETTE,     // expected a write_palette() call, or tried to get a
-                        // non-existent palette.
+                           // non-existent palette.
 } ImErr;
 
+
+
+typedef struct im_in im_in;
+typedef struct im_out im_out;
+typedef struct im_read im_read;
+typedef struct im_write im_write;
+
+/*****************
+ * Reading
+ *
+ * General steps:
+ * 1. Create an im_read object (eg using im_read_open_file()).
+ * 2. Call im_read_img to get the image details.
+ * 3. (optional) call im_read_set_fmt(), im_read_palette() etc...
+ * 4. Read the image data out using im_read_rows().
+ * 5. If reading an animation, loop back to step 2.
+ * 5. Call im_read_finish().
+ *
+ * It is safe to defer error checking until the final im_read_finish() call.
+ * If an error occurs at any point, most calls upon the im_read object are
+ * just considered no-ops.
+ * You can use im_read_err() to check the error state at any point.
+ */
+
+/* im_imginfo is a struct returned by im_read_img() to describe the details
+ * of the incoming image.
+ */
+typedef struct im_imginfo {
+    ImFmt fmt;                      // One of IM_FMT_*
+    unsigned int w;                 // Width
+    unsigned int h;                 // Height
+    int x_offset;
+    int y_offset;
+    unsigned int pal_num_colours;   // Palette size.
+} im_imginfo;
+
+/* Create a read object by opening a file.
+ * Returns NULL upon failure, and err will be set to report what went wrong.
+ */
+im_read* im_read_open_file(const char *filename, ImErr *err);
+
+/* Create a read object to read from an im_in stream.
+ * Returns NULL upon failure, and err will be set to report what went wrong.
+ */
+im_read* im_read_new(ImFileFmt file_fmt, im_in *in, ImErr *err);
+
+/* Read in the image details and fills out the given im_imginfo struct.
+ * Returns true if an image was obtained, false otherwise.
+ * If an error occured, the im_read objects err code will contain it.
+ */
+bool im_read_img(im_read *reader, im_imginfo *info);
+
+/* Request the image format that should be returned by im_read_rows().
+ *
+ * The im_imginfo filled out by im_read_img() contains the default format that
+ * im_read_rows() will provide. This function lets you set a specific format
+ * instead.
+ *
+ * It will happily reorder RGBA components for you, or add/remove an alpha
+ * channel or expand paletted images up to RGB. But it will refuse in some cases.
+ * It will not perform quantisation to convert from RGB to a paletted format,
+ * for example. In such cases, a IM_ERR_NOCONV error will be set upon the
+ * im_read object.
+ */
+void im_read_set_fmt(im_read* rdr, ImFmt fmt);
+
+/* Read out some (or all) of the image data.
+ * It can be called multiple times.
+ * `buf` must point to a buffer large enough to contain the resultant rows of
+ * image data.
+ * `stride` is the number of bytes to go from the beginning of one row to the
+ * next. Without padding, most images would have a stride of w*bytesperpixel.
+ * A negative `stride` is allowed, so buffers can be filled from the bottom
+ * up.
+ * The pixel format of the image data will be whatever im_read_img() returned,
+ * unless it was successfully overridden by im_read_set_fmt().
+ */
+void im_read_rows(im_read *reader, unsigned int num_rows, void *buf, int stride);
+
+/* Fetch the palette for the current image. Assumes buf is big enough for
+ * info->pal_num_colours in format pal_fmt.
+ */
+void im_read_palette(im_read *reader, ImFmt pal_fmt, uint8_t *buf);
+
+/* Finish the read operation, clean up and return the final error state. */
+ImErr im_read_finish(im_read *reader);
+
+/* Returns the current error state of the im_read object. */
+ImErr im_read_err(im_read *reader);
+
+
+/****************
+ * Writing
+ *
+ * The general sequence is:
+ *  1. create an im_write object
+ *  2. call im_write_img() to describe the image properties.
+ *  3. call optional extra functions, such as im_write_palette().
+ *  4. call im_write_rows one or more times to write the image data.
+ *  5. If the format supports it, go back to step 2 to write another image.
+ *  6. im_write_finish() when done.
+ *
+ * At any point, you can call im_write_err() to check the error state of the
+ * writer. It's safe to call the write functions after an error occurs - they
+ * will just act as a no-op.
+ * So it's OK to skip error checking just check the final code returned by
+ * im_write_finish() to see if the write was successful or not.
+ * If an error did occur, there might be partially-written data.
+ */
+
+/* Create an im_write object to write to a file.
+ * Returns NULL upon error, and returns a specific error code via err.
+ */
+im_write* im_write_open_file(const char *filename, ImErr *err);
+
+/* Create a writer to write to an sbstracted im_out stream */
+im_write* im_write_new(ImFileFmt file_fmt, im_out *out, ImErr *err);
+
+/* Begin writing an image of the given width, height and pixel format. */
+void im_write_img(im_write *writer, unsigned int w, unsigned int h, ImFmt fmt);
+
+/* Set the current palette, after a im_write_img() call.
+ * For multiple-image writes, the palette stays in effect for subsequent
+ * frames. So if you're writing out an animation which uses a single global
+ * palette, it's sufficient to just write it out once, for the first frame.
+ */
+void im_write_palette(im_write *writer, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
+
+/* Write the image data.
+ * Can be called multiple times until the whole image is complete.
+ * `data` is expected contain `num_rows` worth of source in the pixel format
+ * given in im_write_img().
+ * `stride` is the number of bytes to go from the beginning of one row to the
+ * next. Without padding, most images would have a stride of w*bytesperpixel.
+ * A negative `stride` is allowed, to allow the caller to write rows from the
+ * bottom-up.
+ */
+void im_write_rows(im_write *writer, unsigned int num_rows, const void *data, int stride);
+
+/* Finish the write operation, clean up and return the final error state. */
+ImErr im_write_finish(im_write *writer);
+
+/* Returns the current error state of the im_write object. */
+ImErr im_write_err(im_write *writer);
+
+
+/* im_guess_file_format tries to guess the most appropriate file format based
+ * on the given filename.
+ */
+ImFileFmt im_guess_file_format(const char *filename);
+
+
+/******
+ * Pixelformat helpers
+ */
+
+// TODO: bit encode details into the IM_FMT_ values, to simplify these
+// functions.
+
+/* Return true if fmt is intended to index into a palette. */
+static inline bool im_fmt_is_indexed(ImFmt fmt)
+    {return fmt == IM_FMT_INDEX8; }
+
+/* Return true if fmt has RGB components (in any order). */
+static inline bool im_fmt_has_rgb(ImFmt fmt)
+{
+    return fmt != IM_FMT_INDEX8 &&
+        fmt != IM_FMT_ALPHA &&
+        fmt != IM_FMT_LUMINANCE;
+}
+
+/* Return true if fmt has an alpha channel. */
+static inline bool im_fmt_has_alpha(ImFmt fmt)
+{
+    return fmt == IM_FMT_RGBA ||
+        fmt == IM_FMT_BGRA ||
+        fmt == IM_FMT_ARGB ||
+        fmt == IM_FMT_ABGR ||
+        fmt == IM_FMT_ALPHA;
+}
+
+/* Return the number of bytes for each pixel in this format. */
+static inline size_t im_fmt_bytesperpixel(ImFmt fmt)
+{
+    size_t s = 0;
+    if (im_fmt_is_indexed(fmt)) {
+        s += 1;
+    } else if (im_fmt_has_rgb(fmt)) {
+        s += 3;
+    }
+    if (im_fmt_has_alpha(fmt)) {
+        s += 1;
+    }
+    return s;
+}
 
 /**********
  * IO stuff
@@ -123,17 +279,16 @@ typedef enum ImErr {
 #define IM_SEEK_CUR 1
 #define IM_SEEK_END 2
 
-typedef struct im_in im_in;
 
 // abstracted interface for reading
-struct im_in {
+typedef struct im_in {
     size_t (*read)(im_in *, void * , size_t );
     int (*seek)(im_in *, long , int);
     int (*tell)(im_in *);
     int (*eof)(im_in *);
     int (*error)(im_in *);
     int (*close)(im_in *);
-};
+} im_in;
 
 
 // open a file for reading (binary mode)
@@ -177,11 +332,11 @@ typedef struct im_out {
 
 // open a file for writing
 // (backed by fopen/fwrite etc)
-extern im_out* im_out_open_file(const char *filename, ImErr *err);
-//extern im_out* im_open_mem_writer( void* buf, size_t buf_size );
+im_out* im_out_open_file(const char *filename, ImErr *err);
+//im_out* im_open_mem_writer( void* buf, size_t buf_size );
 
 // Close and free writer returns error code...
-extern int im_out_close(im_out * w);
+int im_out_close(im_out * w);
 
 // Write data out. returns number of bytes successfully written
 // if <nbytes, an error has occurred
@@ -190,76 +345,6 @@ static inline size_t im_out_write(im_out *w, const void *data, size_t nbytes)
 
 
 
-/****************
- * filetype stuff
- */
-
-// im_guess_file_format tries to guess the most appropriate file format based
-// on the given filename.
-ImFileFmt im_guess_file_format(const char *filename);
-
-
-/****************
- * API for writing
- */
-
-// im_write is the handle used for writing out files.
-// The general sequence is:
-//  1. create an im_write object
-//  2. call im_write_img() to describe the image properties.
-//  3. call optional extra functions, such as im_write_palette().
-//  4. call im_write_rows one or more times to write the image data.
-//  5. If the format supports it, go back to step 2 to write another image.
-//  6. im_write_finish() when done.
-//
-// At any point, you can call im_write_err() to check the error state of the
-// writer. It's safe to call the write functions after an error occurs - they
-// will just act as a no-op.
-// So it's OK to skip error checking just check the final code returned by
-// im_write_finish() to see if the write was successful or not.
-// If an error did occur, there might be partially-written data.
-typedef struct im_write im_write;
-
-im_write* im_write_open_file(const char *filename, ImErr *err);
-im_write* im_write_new(ImFileFmt file_fmt, im_out *out, ImErr *err);
-
-void im_write_img(im_write *writer, unsigned int w, unsigned int h, ImFmt fmt);
-void im_write_palette(im_write *writer, ImFmt pal_fmt, unsigned int num_colours, const uint8_t *colours);
-void im_write_rows(im_write *writer, unsigned int num_rows, const void *data, int stride);
-
-ImErr im_write_finish(im_write *writer);
-ImErr im_write_err(im_write *writer);
-
-
-/*****************
- * API for reading
- */
-
-typedef struct im_imginfo {
-    ImFmt fmt;
-    unsigned int w;
-    unsigned int h;
-    int x_offset;
-    int y_offset;
-    unsigned int pal_num_colours;
-} im_imginfo;
-
-typedef struct im_read im_read;
-
-im_read* im_read_new(ImFileFmt file_fmt, im_in *in, ImErr *err);
-im_read* im_read_open_file(const char *filename, ImErr *err);
-
-bool im_read_img(im_read *reader, im_imginfo *info);
-void im_read_set_fmt(im_read* rdr, ImFmt fmt);
-
-ImErr im_read_err(im_read *reader);
-void im_read_rows(im_read *reader, unsigned int num_rows, void *buf, int stride);
-
-// Fetch the current palette. Assumes buf is big enough for info->pal_num_colours
-// in format pal_fmt.
-void im_read_palette(im_read *reader, ImFmt pal_fmt, uint8_t *buf);
-
-ImErr im_read_finish(im_read *reader);
 
 #ifdef __cplusplus
 }
