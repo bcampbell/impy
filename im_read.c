@@ -14,49 +14,88 @@ void i_read_init(im_read* rdr)
     rdr->external_fmt = IM_FMT_NONE;
 }
 
+
+static const i_read_handler* read_handlers[] = {
+    &i_gif_read_handler,
+    &i_png_read_handler,
+    &i_bmp_read_handler,
+    &i_jpeg_read_handler,
+    &i_pcx_read_handler,
+    &i_targa_read_handler,
+    NULL
+};
+
+
+
 // Reading
 
-im_read* im_read_new(ImFileFmt file_fmt, im_in* in, ImErr* err)
+
+
+ImFiletype im_sniff_filetype(im_in *in)
 {
-    switch (file_fmt) {
-        case IM_FILEFMT_GIF:
-            return i_new_gif_reader(in, err);
-        case IM_FILEFMT_PNG:
-            return im_new_generic_reader(iread_png_image, in ,err);
-        case IM_FILEFMT_BMP:
-            return im_new_generic_reader(iread_bmp_image, in ,err);
-        case IM_FILEFMT_JPEG:
-            return im_new_generic_reader(iread_jpeg_image, in ,err);
-        case IM_FILEFMT_PCX:
-            return im_new_generic_reader(iread_pcx_image, in ,err);
-        case IM_FILEFMT_TARGA:
-            return im_new_generic_reader(iread_targa_image, in ,err);
-        default:
-           *err = IM_ERR_UNSUPPORTED;
-          return NULL; 
+    const i_read_handler** h;
+ 
+    // is_iff requires 12 bytes...
+    uint8_t cookie[16];
+    if (im_in_read(in, cookie, sizeof(cookie)) != sizeof(cookie)) {
+        return IM_FILETYPE_UNKNOWN;
     }
+
+    // reset reader
+    if (im_in_seek(in, 0, IM_SEEK_SET) != 0 ) {
+        return IM_FILETYPE_UNKNOWN;
+    }
+
+    for (h = read_handlers; *h; ++h) {
+        if ((*h)->match_cookie(cookie, sizeof(cookie))) {
+            return (*h)->file_format;
+        }
+    }
+    return IM_FILETYPE_UNKNOWN;
+}
+
+im_read* im_read_new(ImFiletype file_fmt, im_in* in, ImErr* err)
+{
+    const i_read_handler** h;
+
+    if (file_fmt == IM_FILETYPE_UNKNOWN) {
+        file_fmt = im_sniff_filetype(in);
+    }
+
+    for (h = read_handlers; *h; ++h) {
+        if ((*h)->file_format == file_fmt) {
+            return (*h)->create(in, err);
+        }
+    }
+    *err = IM_ERR_UNSUPPORTED;
+    return NULL;
 }
 
 im_read* im_read_open_file(const char* filename, ImErr* err)
 {
     im_in* in;
-    ImFileFmt file_fmt;
+    ImFiletype file_fmt;
     im_read* rdr;
     
-    // TODO: magic cookie sniffing instead of extension guessing here!
-    file_fmt = im_guess_file_format(filename);
 
     in = im_in_open_file(filename, err);
     if (!in) {
         return NULL;
     }
 
+    file_fmt = im_sniff_filetype(in);
+    if (file_fmt == IM_FILETYPE_UNKNOWN) {
+        // Fall back to using filename...
+        // eg Targa has no magic cookie matching...
+        file_fmt = im_filetype_from_filename(filename);
+    }
     rdr = im_read_new(file_fmt, in, err);
     if (!rdr) {
         im_in_close(in);    // also frees in
         return NULL;
     }
 
+    // Indicate we want `in` closed and freed when reader is finished.
     rdr->in_owned = true;
     return rdr;
 }

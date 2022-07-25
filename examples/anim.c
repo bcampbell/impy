@@ -16,28 +16,28 @@ uint8_t frame2[] = {
     1,2,1,2,
 };
 
-ImErr test_anim(ImFileFmt file_fmt, const char *filename);
-ImErr test_indexed_img(ImFileFmt file_fmt, const char *filename);
+ImErr test_anim(ImFiletype file_fmt, const char *filename);
+ImErr test_indexed_img(ImFiletype file_fmt, const char *filename);
 
 int main( int argc, char* argv[])
 {
     ImErr err;
-    err = test_indexed_img(IM_FILEFMT_PNG, "/tmp/test.png");
+    err = test_indexed_img(IM_FILETYPE_PNG, "/tmp/test.png");
     if (err != IM_ERR_NONE) {
         fprintf(stderr, "test.png failed: ImErr: %d\n", err);
     }
-    err = test_indexed_img(IM_FILEFMT_BMP, "/tmp/test.bmp");
+    err = test_indexed_img(IM_FILETYPE_BMP, "/tmp/test.bmp");
     if (err != IM_ERR_NONE) {
         fprintf(stderr, "test.bmp failed: ImErr: %d\n", err);
     }
 
-    test_anim(IM_FILEFMT_GIF, "/tmp/anim.gif");
+    test_anim(IM_FILETYPE_GIF, "/tmp/anim.gif");
     if (err != IM_ERR_NONE) {
         fprintf(stderr, "anim.gif failed: ImErr: %d\n", err);
     }
 }
 
-ImErr test_anim(ImFileFmt file_fmt, const char *filename)
+ImErr test_anim(ImFiletype file_fmt, const char *filename)
 {
     ImErr err;
     im_write* wr = im_write_open_file(filename, &err);
@@ -57,7 +57,7 @@ ImErr test_anim(ImFileFmt file_fmt, const char *filename)
     return err;
 }
 
-ImErr test_indexed_img(ImFileFmt file_fmt, const char *filename)
+ImErr test_indexed_img(ImFiletype file_fmt, const char *filename)
 {
     ImErr err;
     im_write* wr = im_write_open_file(filename, &err);

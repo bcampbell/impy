@@ -16,7 +16,7 @@ static void ibmp_emit_rows(im_write *writer, unsigned int num_rows, const void *
 static void ibmp_finish(im_write* wr);
 
 static struct write_handler bmp_write_handler = {
-    IM_FILEFMT_BMP,
+    IM_FILETYPE_BMP,
     ibmp_prep_img,
     ibmp_emit_header,
     ibmp_emit_rows,

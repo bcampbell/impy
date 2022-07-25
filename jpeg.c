@@ -5,30 +5,35 @@
 #include <jpeglib.h>
 #include <jerror.h>
 #include <setjmp.h>
+#include <assert.h>
 
-#if 0
-static bool is_jpeg(const uint8_t* buf, int nbytes);
-static bool match_jpeg_ext(const char* file_ext);
+static bool jpeg_match_cookie(const uint8_t* buf, int nbytes);
+static im_read* jpeg_read_create(im_in *in, ImErr *err);
+static im_img* iread_jpeg_image(im_in* in, ImErr* err);
 
-static bool is_jpeg(const uint8_t* buf, int nbytes)
+i_read_handler i_jpeg_read_handler = {
+    IM_FILETYPE_JPEG,
+    jpeg_match_cookie,
+    jpeg_read_create,
+    i_generic_read_img,
+    i_generic_read_rows,
+    i_generic_read_finish
+};
+
+static bool jpeg_match_cookie(const uint8_t* buf, int nbytes)
 {
+    assert(nbytes >= 3);
     // Start of Image (SOI) marker (FF D8)
     // followed by JFIF marker (FF E0) or EXIF marker(FF 01)
     // But wikipedia suggests ff d8 ff as magic number, which is nice and simple.
     return buf[0]==0xff && buf[1] == 0xd8 && buf[2] == 0xff;
 }
 
-static bool match_jpeg_ext(const char* file_ext)
+static im_read* jpeg_read_create(im_in *in, ImErr *err)
 {
-    if (istricmp(file_ext,".jpeg")==0) {
-        return true;
-    }
-    if (istricmp(file_ext,".jpg")==0) {
-        return true;
-    }
-    return (istricmp(file_ext,".jpeg")==0);
+    return i_new_generic_reader(iread_jpeg_image, &i_jpeg_read_handler, in ,err);
 }
-#endif
+
 
 // ---------------------------------------------
 // custom jpeg_source_mgr to read from im_in
@@ -132,7 +137,7 @@ void my_error_exit(j_common_ptr cinfo)
 //------------------------------------------------------
 //
 
-im_img* iread_jpeg_image( im_in* in, ImErr* err )
+static im_img* iread_jpeg_image(im_in* in, ImErr* err)
 {
     struct jpeg_decompress_struct cinfo;
     my_error_mgr jerr;

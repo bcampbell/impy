@@ -6,11 +6,6 @@
 #include <string.h>
 //#include <limits.h>
 
-static bool generic_read_img(im_read* rdr);
-static void generic_read_rows(im_read *rdr, unsigned int num_rows, void* buf, int stride);
-static void generic_read_finish(im_read* rdr);
-
-
 // Helper to simplify loaders which just slurp in a single im_img.
 typedef struct generic_reader {
     im_read base;
@@ -22,14 +17,7 @@ typedef struct generic_reader {
 
 //im_img* (load_single)(im_in *in, ImErr *err);
 
-
-static read_handler generic_read_handler = {
-    generic_read_img,
-    generic_read_rows,
-    generic_read_finish
-};
-
-im_read* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* in, ImErr* err )
+im_read* i_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), i_read_handler* handler, im_in* in, ImErr* err )
 {
     generic_reader *gr = imalloc(sizeof(generic_reader));
     if (!gr) {
@@ -39,7 +27,7 @@ im_read* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* 
 
     // im_read fields
     i_read_init(&gr->base);
-    gr->base.handler = &generic_read_handler;
+    gr->base.handler = handler;
     gr->base.in = in;
 
     // type-specific fields
@@ -50,7 +38,7 @@ im_read* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* 
 }
 
 
-static bool generic_read_img(im_read* rdr)
+bool i_generic_read_img(im_read* rdr)
 {
     generic_reader *gr = (generic_reader*)rdr;
     im_imginfo* info;
@@ -94,7 +82,7 @@ static bool generic_read_img(im_read* rdr)
     return true;
 }
 
-static void generic_read_rows(im_read *rdr, unsigned int num_rows, void* buf, int stride)
+void i_generic_read_rows(im_read *rdr, unsigned int num_rows, void* buf, int stride)
 {
     generic_reader *gr = (generic_reader*)rdr;
     size_t bytes_per_row;
@@ -111,7 +99,7 @@ static void generic_read_rows(im_read *rdr, unsigned int num_rows, void* buf, in
     }
 }
 
-static void generic_read_finish(im_read* rdr)
+void i_generic_read_finish(im_read* rdr)
 {
     generic_reader *gr = (generic_reader*)rdr;
     if(gr->img) {

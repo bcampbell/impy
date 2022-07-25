@@ -5,10 +5,37 @@
 #include <stdio.h>
 #include <stdint.h>
 
+static bool png_match_cookie(const uint8_t* buf, int nbytes);
+static im_read* png_read_create(im_in *in, ImErr *err);
+static im_img* iread_png_image(im_in* in, ImErr *err);
 static void info_callback(png_structp png_ptr, png_infop info_ptr);
 static void row_callback(png_structp png_ptr, png_bytep new_row, png_uint_32 row_num, int pass);
 static void end_callback(png_structp png_ptr, png_infop info);
 static bool apply_palette(png_structp png_ptr, png_infop info, im_img* img);
+
+
+i_read_handler i_png_read_handler = {
+    IM_FILETYPE_PNG,
+    png_match_cookie,
+    png_read_create,
+    i_generic_read_img,
+    i_generic_read_rows,
+    i_generic_read_finish
+};
+
+static bool png_match_cookie(const uint8_t* buf, int nbytes)
+{
+    if( png_sig_cmp((png_bytep)buf,0,nbytes) == 0 ) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static im_read* png_read_create(im_in *in, ImErr *err)
+{
+    return i_new_generic_reader(iread_png_image, &i_png_read_handler, in, err);
+}
 
 
 // struct to track stuff needed during png progressive reading
@@ -18,27 +45,7 @@ struct cbdat {
     im_img* image;
 };
 
-#if 0
-static bool is_png(const uint8_t* buf, int nbytes);
-static bool match_png_ext(const char* file_ext);
-
-static bool match_png_ext(const char* file_ext)
-{
-    return (istricmp(file_ext,".png")==0);
-}
-
-
-static bool is_png(const uint8_t* buf, int nbytes)
-{
-    if( png_sig_cmp((png_bytep)buf,0,nbytes) == 0 ) {
-        return true;
-    } else {
-        return false;
-    }
-}
-#endif
-
-im_img* iread_png_image(im_in* in, ImErr *err)
+static im_img* iread_png_image(im_in* in, ImErr *err)
 {
     struct cbdat cbDat = {IM_ERR_NONE,0,NULL};
     png_structp png_ptr;

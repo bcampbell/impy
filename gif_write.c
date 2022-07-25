@@ -39,7 +39,7 @@ static int output_fn(GifFileType *gif, const GifByteType *buf, int size);
 
 
 static struct write_handler gif_write_handler = {
-    IM_FILEFMT_GIF,
+    IM_FILETYPE_GIF,
     pre_img,
     emit_header,
     emit_rows,

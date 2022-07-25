@@ -4,7 +4,7 @@
 /* Impy
  *
  * A library to load/save images, including animated images, supporting
- * a variety of file formats.
+ * a variety of file types.
  */
 
 #ifdef __cplusplus
@@ -36,17 +36,17 @@ typedef enum ImFmt {
     IM_FMT_LUMINANCE    // Not really supported yet.
 } ImFmt;
 
-// Supported file formats.
-typedef enum ImFileFmt {
-    IM_FILEFMT_UNKNOWN=0,
-    IM_FILEFMT_PNG,
-    IM_FILEFMT_GIF,
-    IM_FILEFMT_BMP,
-    IM_FILEFMT_ILBM,
-    IM_FILEFMT_JPEG,
-    IM_FILEFMT_TARGA,
-    IM_FILEFMT_PCX
-} ImFileFmt;
+// Supported file types.
+typedef enum ImFiletype {
+    IM_FILETYPE_UNKNOWN=0,
+    IM_FILETYPE_PNG,
+    IM_FILETYPE_GIF,
+    IM_FILETYPE_BMP,
+    IM_FILETYPE_ILBM,
+    IM_FILETYPE_JPEG,
+    IM_FILETYPE_TARGA,
+    IM_FILETYPE_PCX
+} ImFiletype;
 
 
 // TODO: group into user-facing errors and coder errors
@@ -118,7 +118,7 @@ im_read* im_read_open_file(const char *filename, ImErr *err);
 /* Create a read object to read from an im_in stream.
  * Returns NULL upon failure, and err will be set to report what went wrong.
  */
-im_read* im_read_new(ImFileFmt file_fmt, im_in *in, ImErr *err);
+im_read* im_read_new(ImFiletype file_fmt, im_in *in, ImErr *err);
 
 /* Read in the image details and fills out the given im_imginfo struct.
  * Returns true if an image was obtained, false otherwise.
@@ -190,7 +190,7 @@ ImErr im_read_err(im_read *reader);
 im_write* im_write_open_file(const char *filename, ImErr *err);
 
 /* Create a writer to write to an sbstracted im_out stream */
-im_write* im_write_new(ImFileFmt file_fmt, im_out *out, ImErr *err);
+im_write* im_write_new(ImFiletype file_fmt, im_out *out, ImErr *err);
 
 /* Begin writing an image of the given width, height and pixel format. */
 void im_write_img(im_write *writer, unsigned int w, unsigned int h, ImFmt fmt);
@@ -219,12 +219,23 @@ ImErr im_write_finish(im_write *writer);
 /* Returns the current error state of the im_write object. */
 ImErr im_write_err(im_write *writer);
 
-
-/* im_guess_file_format tries to guess the most appropriate file format based
- * on the given filename.
+/********
+ * Filetype detection/guessing
  */
-ImFileFmt im_guess_file_format(const char *filename);
 
+/* im_filetype_from_filename tries to guess the most appropriate file type
+ * based on the given filename. Note: when reading a file,
+ * im_sniff_file_format() is a better place to start, falling back to this
+ * only if no file type could be identified.
+ */
+ImFiletype im_filetype_from_filename(const char *filename);
+
+/* im_sniff_filetype looks at the first few bytes to identify the file
+ * type. Note: not all file types can be identified this way (for example,
+ * targa has no distinguishing signature at the start of the file).
+ * When done, `in` is reset back to the start, ready for reading.
+ */
+ImFiletype im_sniff_filetype(im_in *in);
 
 /******
  * Pixelformat helpers

@@ -8,15 +8,28 @@
 
 
 
-// format reference:
-// https://en.wikipedia.org/wiki/PCX#References
-// http://bespin.org/~qz/pc-gpe/pcx.txt
-//
-// pcx code from gimp:
-// https://git.gnome.org/browse/gimp/tree/plug-ins/common/file-pcx.c
+static bool pcx_match_cookie(const uint8_t* buf, int nbytes);
+static im_read* pcx_read_create(im_in *in, ImErr *err);
+static im_img* iread_pcx_image(im_in* in, ImErr* err);
 
-static bool is_pcx(const uint8_t* buf, int nbytes)
+i_read_handler i_pcx_read_handler = {
+    IM_FILETYPE_PCX,
+    pcx_match_cookie,
+    pcx_read_create,
+    i_generic_read_img,
+    i_generic_read_rows,
+    i_generic_read_finish
+};
+
+static bool pcx_match_cookie(const uint8_t* buf, int nbytes)
 {
+    // format reference:
+    // https://en.wikipedia.org/wiki/PCX#References
+    // http://bespin.org/~qz/pc-gpe/pcx.txt
+    //
+    // pcx code from gimp:
+    // https://git.gnome.org/browse/gimp/tree/plug-ins/common/file-pcx.c
+
     const uint8_t magic = buf[0], v=buf[1], enc=buf[2], bpp=buf[3];
     assert(nbytes>=4);
     if (magic != 0x0a) {
@@ -34,13 +47,10 @@ static bool is_pcx(const uint8_t* buf, int nbytes)
     return true;
 }
 
-#if 0
-// returns true if filename extenstion is ".pcx" (case-insensitive)
-static bool match_pcx_ext(const char* file_ext)
+static im_read* pcx_read_create(im_in *in, ImErr *err)
 {
-    return (istricmp(file_ext,".pcx")==0);
+    return i_new_generic_reader(iread_pcx_image, &i_pcx_read_handler, in ,err);
 }
-#endif
 
 typedef struct header {
     int version, enc, depth, w, h, xmin, xmax, ymin, ymax, planes, xdpi, ydpi;
@@ -53,7 +63,7 @@ static bool read_header( header* pcx, im_in* in, ImErr *err);
 static void decode_scanline( header* pcx, im_in* in);
 
 
-im_img* iread_pcx_image( im_in* in, ImErr* err )
+static im_img* iread_pcx_image( im_in* in, ImErr* err )
 {
     im_img* img = NULL;
     header pcx = {0};
@@ -175,7 +185,7 @@ static bool read_header( header* pcx, im_in* in, ImErr *err)
     */
 
     // some sanity checks
-    if (!is_pcx(buf,128) ) {
+    if (!pcx_match_cookie(buf,128) ) {
         *err = IM_ERR_MALFORMED;
         return false;
     }

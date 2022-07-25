@@ -20,14 +20,14 @@ void i_write_init(im_write* writer)
 }
 
 
-im_write* im_write_new(ImFileFmt file_fmt, im_out* out, ImErr* err)
+im_write* im_write_new(ImFiletype file_fmt, im_out* out, ImErr* err)
 {
     switch (file_fmt) {
-        case IM_FILEFMT_PNG:
+        case IM_FILETYPE_PNG:
             return ipng_new_writer(out, err);
-        case IM_FILEFMT_GIF:
+        case IM_FILETYPE_GIF:
             return igif_new_writer(out, err);
-        case IM_FILEFMT_BMP:
+        case IM_FILETYPE_BMP:
             return ibmp_new_writer(out, err);
         default:
            *err = IM_ERR_UNSUPPORTED;
@@ -73,10 +73,10 @@ ImErr im_write_err(im_write* writer)
 im_write* im_write_open_file(const char *filename, ImErr* err)
 {
     im_out* out;
-    ImFileFmt file_fmt;
+    ImFiletype file_fmt;
     im_write* writer;
     
-    file_fmt = im_guess_file_format(filename);
+    file_fmt = im_filetype_from_filename(filename);
 
     out = im_out_open_file(filename, err);
     if (!out) {

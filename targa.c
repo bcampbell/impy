@@ -25,21 +25,29 @@
   3. This notice may not be removed or altered from any source distribution.
 */
 
-#if 0
-static bool is_targa(const uint8_t* buf, int nbytes);
-static bool match_targa_ext(const char* file_ext);
 
-// no magic cookie for targa...
-static bool is_targa(const uint8_t* buf, int nbytes)
+static bool targa_match_cookie(const uint8_t* buf, int nbytes);
+static im_read* targa_read_create(im_in *in, ImErr *err);
+static im_img* iread_targa_image(im_in* in, ImErr* err);
+
+i_read_handler i_targa_read_handler = {
+    IM_FILETYPE_TARGA,
+    targa_match_cookie,
+    targa_read_create,
+    i_generic_read_img,
+    i_generic_read_rows,
+    i_generic_read_finish
+};
+
+static bool targa_match_cookie(const uint8_t* buf, int nbytes)
 {
-    return true;
+    return false;   // no magic cookie for targa!
 }
 
-static bool match_targa_ext(const char* file_ext)
+static im_read* targa_read_create(im_in *in, ImErr *err)
 {
-    return (istricmp(file_ext,".tga")==0);
+    return i_new_generic_reader(iread_targa_image, &i_targa_read_handler, in ,err);
 }
-#endif
 
 
 /*
@@ -94,7 +102,7 @@ enum tga_type {
 #define SETLE16(p, v) ((p)[0] = (v), (p)[1] = (v) >> 8)
 
 /* Load a TGA type image from an im_in */
-im_img* iread_targa_image( im_in* in, ImErr* err )
+static im_img* iread_targa_image( im_in* in, ImErr* err )
 {
     struct TGAheader hdr;
     int rle = 0;

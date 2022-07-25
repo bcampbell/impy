@@ -7,17 +7,39 @@
 #include <limits.h>
 #include <gif_lib.h>
 
+static bool gif_match_cookie(const uint8_t* buf, int nbytes);
+static im_read* gif_read_create(im_in *in, ImErr *err);
 static void gif_read_finish(im_read *rdr);
 static bool gif_read_img(im_read *rdr);
 static void gif_read_rows(im_read *rdr, unsigned int num_rows, void *buf, int stride);
 
 static void read_file_header(im_read* rdr);
 
-static read_handler gif_read_handler = {
+i_read_handler i_gif_read_handler = {
+    IM_FILETYPE_GIF,
+    gif_match_cookie,
+    gif_read_create,
     gif_read_img,
     gif_read_rows,
     gif_read_finish
-};
+}; 
+
+// returns true if buf contains gif magic cookie ("GIF87a" or "GIF89a")
+// (assumes buf contains at least 6 bytes)
+static bool gif_match_cookie(const uint8_t* buf, int nbytes)
+{
+    assert(nbytes>=6);
+    const char* p = (const char*)buf;
+    return (
+        p[0]=='G' &&
+        p[1]=='I' &&
+        p[2]=='F' &&
+        p[3]=='8' &&
+        (p[4]=='7' || p[4]=='9') &&
+        p[5] == 'a');
+}
+
+
 
 
 static ImErr translate_err( int gif_err_code )
@@ -74,7 +96,7 @@ static int input_fn(GifFileType *gif, GifByteType *buf, int size)
 }
 
 
-im_read* i_new_gif_reader(im_in *in, ImErr *err)
+static im_read* gif_read_create(im_in *in, ImErr *err)
 {
     gif_reader* gr = imalloc(sizeof(gif_reader));
     if (!gr) {
@@ -83,7 +105,7 @@ im_read* i_new_gif_reader(im_in *in, ImErr *err)
     }
 
     i_read_init(&gr->base);
-    gr->base.handler = &gif_read_handler;
+    gr->base.handler = &i_gif_read_handler;
     gr->base.in = in;
 
     // gif-specific fields

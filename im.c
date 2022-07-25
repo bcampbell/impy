@@ -59,43 +59,43 @@ static struct handler* pick_handler_for_read(im_in* rdr)
 
 // Misc
 
-ImFileFmt im_guess_file_format(const char* filename)
+ImFiletype im_filetype_from_filename(const char* filename)
 {
     const char* ext = ext_part(filename);
     if (istricmp(ext, ".png") == 0) {
-        return IM_FILEFMT_PNG;
+        return IM_FILETYPE_PNG;
     }
     if (istricmp(ext, ".gif") == 0) {
-        return IM_FILEFMT_GIF;
+        return IM_FILETYPE_GIF;
     }
     if (istricmp(ext, ".bmp") == 0) {
-        return IM_FILEFMT_BMP;
+        return IM_FILETYPE_BMP;
     }
     if (istricmp(ext, ".jpeg") ==0 ) {
-        return IM_FILEFMT_JPEG;
+        return IM_FILETYPE_JPEG;
     }
     if (istricmp(ext, ".jpg") ==0 ) {
-        return IM_FILEFMT_JPEG;
+        return IM_FILETYPE_JPEG;
     }
     if (istricmp(ext, ".pcx") ==0 ) {
-        return IM_FILEFMT_PCX;
+        return IM_FILETYPE_PCX;
     }
     if (istricmp(ext, ".tga") ==0 ) {
-        return IM_FILEFMT_TARGA;
+        return IM_FILETYPE_TARGA;
     }
     if (istricmp(ext, ".iff") ==0 ) {
-        return IM_FILEFMT_ILBM;
+        return IM_FILETYPE_ILBM;
     }
     if (istricmp(ext, ".lbm") ==0 ) {
-        return IM_FILEFMT_ILBM;
+        return IM_FILETYPE_ILBM;
     }
     if (istricmp(ext, ".ilbm") ==0 ) {
-        return IM_FILEFMT_ILBM;
+        return IM_FILETYPE_ILBM;
     }
     if (istricmp(ext, ".pbm") ==0 ) {
-        return IM_FILEFMT_ILBM;
+        return IM_FILETYPE_ILBM;
     }
-    return IM_FILEFMT_UNKNOWN;
+    return IM_FILETYPE_UNKNOWN;
 }
 
 

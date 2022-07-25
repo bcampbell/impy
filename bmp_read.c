@@ -25,7 +25,29 @@
 // (bmpsuite really is rather amazing and thorough)
 //
 
+static bool bmp_match_cookie(const uint8_t* buf, int nbytes);
+static im_read* bmp_read_create(im_in *in, ImErr *err);
+static im_img* iread_bmp_image(im_in* in, ImErr* err);
 
+i_read_handler i_bmp_read_handler = {
+    IM_FILETYPE_BMP,
+    bmp_match_cookie,
+    bmp_read_create,
+    i_generic_read_img,
+    i_generic_read_rows,
+    i_generic_read_finish
+};
+
+static bool bmp_match_cookie(const uint8_t* buf, int nbytes)
+{
+    assert(nbytes >= 2);
+    return buf[0] == 'B' && buf[1] == 'M';
+}
+
+static im_read* bmp_read_create(im_in *in, ImErr *err)
+{
+    return i_new_generic_reader(iread_bmp_image, &i_bmp_read_handler, in ,err);
+}
 
 typedef struct bmp_state {
     uint8_t fileheader[BMP_FILE_HEADER_SIZE];
@@ -53,16 +75,6 @@ typedef struct bmp_state {
     uint8_t* linebuf;
 } bmp_state;
 
-bool im_is_bmp(const uint8_t* buf, int nbytes)
-{
-    return buf[0]=='B' && buf[1] == 'M';
-}
-
-bool im_ext_match_bmp(const char* file_ext)
-{
-    return (istricmp(file_ext,".bmp")==0);
-}
-
 
 static bool read_file_header(bmp_state *bmp, im_in* in, ImErr* err);
 static bool read_bitmap_header(bmp_state *bmp, im_in* in, ImErr* err);
@@ -78,7 +90,7 @@ static bool read_img_8_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* er
 static bool read_img_BI_RLE8( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
 static bool read_img_BI_RLE4( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
 
-im_img* iread_bmp_image(im_in* in, ImErr* err)
+static im_img* iread_bmp_image(im_in* in, ImErr* err)
 {
     bmp_state bmp = {0};
     im_img* img = NULL;
@@ -134,12 +146,12 @@ static bool read_file_header(bmp_state *bmp, im_in* in, ImErr* err) {
         return false;
     }
 
-    if (!im_is_bmp(buf, BMP_FILE_HEADER_SIZE)) {
+    if (!bmp_match_cookie(buf, BMP_FILE_HEADER_SIZE)) {
         *err = IM_ERR_MALFORMED;
         return false;
     }
 
-    p=buf+2;    // skip bfType ("BM")
+    p = buf + 2;    // skip bfType ("BM")
     bmp->filesize = (size_t)decode_u32le(&p);    // bfSize
     decode_s16le(&p);       // bfReserved1
     decode_s16le(&p);       // bfReserved2

@@ -24,7 +24,7 @@ extern im_convert_fn i_pick_convert_fn(ImFmt srcFmt, ImFmt destFmt);
  */
 
 typedef struct write_handler {
-    ImFileFmt file_fmt;
+    ImFiletype file_fmt;
     void (*pre_img)(im_write* writer);
     void (*emit_header)(im_write* writer);
     void (*emit_rows)(im_write *writer, unsigned int num_rows, const void *data, int stride);
@@ -74,16 +74,19 @@ void i_write_set_internal_fmt(im_write* writer, ImFmt internal_fmt);
  * read API support
  */
 
-typedef struct read_handler {
+typedef struct i_read_handler {
+    ImFiletype file_format;
+    bool (*match_cookie)(const uint8_t* buf, int nbytes);
+    im_read* (*create)(im_in *in, ImErr *err);
     bool (*get_img)(im_read* rdr);
     void (*read_rows)(im_read *rdr, unsigned int num_rows, void *buf, int stride);
     void (*finish)(im_read* rdr);
-} read_handler;
+} i_read_handler;
 
 
 // The common fields shared by all readers.
 typedef struct im_read {
-    read_handler* handler;
+    i_read_handler* handler;
     ImErr err;
     im_in* in;
     bool in_owned; // close and free `in` when done?
@@ -109,18 +112,21 @@ typedef struct im_read {
 void i_read_init(im_read* rdr);
 
 // From gif_read.c
-extern im_read* i_new_gif_reader(im_in * in, ImErr *err);
+//extern im_read* i_new_gif_reader(im_in * in, ImErr *err);
 
 // From generic_read.c
-extern im_read* im_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), im_in* in, ImErr* err );
+im_read* i_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), i_read_handler* handler, im_in* in, ImErr* err );
+bool i_generic_read_img(im_read* rdr);
+void i_generic_read_rows(im_read *rdr, unsigned int num_rows, void* buf, int stride);
+void i_generic_read_finish(im_read* rdr);
 
-// From various readers.
-im_img* iread_png_image(im_in* rdr, ImErr *err);
-im_img* iread_bmp_image(im_in* rdr, ImErr *err);
-im_img* iread_jpeg_image(im_in* rdr, ImErr *err);
-im_img* iread_pcx_image(im_in* rdr, ImErr *err);
-im_img* iread_targa_image(im_in* rdr, ImErr *err);
-
+// Read handers (from various files).
+extern i_read_handler i_gif_read_handler;
+extern i_read_handler i_png_read_handler;
+extern i_read_handler i_bmp_read_handler;
+extern i_read_handler i_jpeg_read_handler;
+extern i_read_handler i_pcx_read_handler;
+extern i_read_handler i_targa_read_handler;
 
 // From im.c
 extern void* imalloc(size_t size);

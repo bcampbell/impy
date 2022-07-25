@@ -28,7 +28,7 @@ typedef struct ipng_writer {
 } ipng_writer;
 
 static struct write_handler ipng_write_handler = {
-    IM_FILEFMT_PNG,
+    IM_FILETYPE_PNG,
     pre_img,
     emit_header,
     emit_rows,
