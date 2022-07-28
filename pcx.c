@@ -10,7 +10,7 @@
 
 static bool pcx_match_cookie(const uint8_t* buf, int nbytes);
 static im_read* pcx_read_create(im_in *in, ImErr *err);
-static im_img* iread_pcx_image(im_in* in, ImErr* err);
+static im_img* iread_pcx_image(im_in* in, kvstore *kv, ImErr* err);
 
 i_read_handler i_pcx_read_handler = {
     IM_FILETYPE_PCX,
@@ -63,7 +63,7 @@ static bool read_header( header* pcx, im_in* in, ImErr *err);
 static void decode_scanline( header* pcx, im_in* in);
 
 
-static im_img* iread_pcx_image( im_in* in, ImErr* err )
+static im_img* iread_pcx_image( im_in* in, kvstore *kv, ImErr* err )
 {
     im_img* img = NULL;
     header pcx = {0};

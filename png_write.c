@@ -1,10 +1,11 @@
 #include "impy.h"
 #include "private.h"
+#include <assert.h>
 #include <png.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdbool.h>
-#include <assert.h>
+#include <string.h>
 
 
 static void pre_img(im_write* wr);
@@ -129,6 +130,24 @@ static void emit_header(im_write* wr)
 
     if (wr->pal_num_colours > 0) {
         emit_palette(wr);
+    }
+
+    // If there are any string key-value pairs lined up, write them out as
+    // text chunks.
+    if (wr->kv.num_entries > 0) {
+        png_text *tmp = imalloc(sizeof(png_text) * wr->kv.num_entries);
+        size_t i;
+        for (i = 0; i < wr->kv.num_entries; ++i) {
+            tmp[i].compression = PNG_TEXT_COMPRESSION_NONE;
+            tmp[i].key = (char*)wr->kv.entries[i].key;
+            tmp[i].text = (char*)wr->kv.entries[i].value;
+            tmp[i].text_length = strlen(wr->kv.entries[i].value);
+            tmp[i].itxt_length = 0;
+            tmp[i].lang = NULL;
+            tmp[i].lang_key = NULL;
+        }
+        png_set_text(pw->png_ptr, pw->info_ptr, tmp, wr->kv.num_entries);
+        ifree(tmp);
     }
 
     // write the header chunks

@@ -12,6 +12,7 @@ void i_read_init(im_read* rdr)
     rdr->err = IM_ERR_NONE;
     rdr->state = READSTATE_READY;
     rdr->external_fmt = IM_FMT_NONE;
+    i_kvstore_init(&rdr->kv);
 }
 
 
@@ -153,6 +154,7 @@ ImErr im_read_finish(im_read* rdr)
         }
         rdr->in = NULL;
     }
+    i_kvstore_cleanup(&rdr->kv);
 
     err = rdr->err;
     ifree(rdr);
@@ -269,4 +271,13 @@ void im_read_palette(im_read* rdr, ImFmt pal_fmt, uint8_t* buf)
     cvt_fn(rdr->pal_data, buf, rdr->curr.pal_num_colours, 0, NULL);
 }
 
+
+const im_kv *im_read_kv(im_read* reader)
+{
+    if (reader->err != IM_ERR_NONE) {
+        static im_kv nullkv = {NULL, NULL};
+        return &nullkv;
+    }
+    return reader->kv.entries;
+}
 

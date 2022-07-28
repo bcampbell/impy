@@ -28,7 +28,7 @@
 
 static bool targa_match_cookie(const uint8_t* buf, int nbytes);
 static im_read* targa_read_create(im_in *in, ImErr *err);
-static im_img* iread_targa_image(im_in* in, ImErr* err);
+static im_img* iread_targa_image(im_in* in, kvstore * kv, ImErr* err);
 
 i_read_handler i_targa_read_handler = {
     IM_FILETYPE_TARGA,
@@ -102,7 +102,7 @@ enum tga_type {
 #define SETLE16(p, v) ((p)[0] = (v), (p)[1] = (v) >> 8)
 
 /* Load a TGA type image from an im_in */
-static im_img* iread_targa_image( im_in* in, ImErr* err )
+static im_img* iread_targa_image( im_in* in, kvstore *kv, ImErr* err )
 {
     struct TGAheader hdr;
     int rle = 0;

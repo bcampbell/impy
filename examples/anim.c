@@ -65,6 +65,12 @@ ImErr test_indexed_img(ImFiletype file_fmt, const char *filename)
         return err;
     }
 
+    // Add some metadata, if the format supports it.
+    im_write_kv(wr, "Comment", "This is a comment.");
+    im_write_kv(wr, "Answer", "42");
+    im_write_kv(wr, "Comment", "This is also a comment.");
+    im_write_kv(wr, "Wibble", "Pibble.");
+
     im_write_img(wr, 4, 4, IM_FMT_INDEX8);
 
     im_write_palette(wr, IM_FMT_RGB, 4, pal);

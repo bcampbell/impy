@@ -14,6 +14,7 @@ srcs = [
   'img.c',
   'io.c',
   'jpeg.c',
+  'kvstore.c',
   'pcx.c',
   'png_read.c',
   'png_write.c',

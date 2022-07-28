@@ -27,7 +27,7 @@
 
 static bool bmp_match_cookie(const uint8_t* buf, int nbytes);
 static im_read* bmp_read_create(im_in *in, ImErr *err);
-static im_img* iread_bmp_image(im_in* in, ImErr* err);
+static im_img* iread_bmp_image(im_in* in, kvstore *kv, ImErr* err);
 
 i_read_handler i_bmp_read_handler = {
     IM_FILETYPE_BMP,
@@ -90,7 +90,7 @@ static bool read_img_8_BI_RGB( bmp_state* bmp, im_in* in, im_img* img, ImErr* er
 static bool read_img_BI_RLE8( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
 static bool read_img_BI_RLE4( bmp_state* bmp, im_in* in, im_img* img, ImErr* err);
 
-static im_img* iread_bmp_image(im_in* in, ImErr* err)
+static im_img* iread_bmp_image(im_in* in, kvstore *kv, ImErr* err)
 {
     bmp_state bmp = {0};
     im_img* img = NULL;

@@ -164,6 +164,13 @@ ImErr im_read_finish(im_read *reader);
 /* Returns the current error state of the im_read object. */
 ImErr im_read_err(im_read *reader);
 
+/* A key-value string pair. */
+typedef struct im_kv {
+    const char* key;
+    const char* value;
+} im_kv;
+
+const im_kv *im_read_kv(im_read* reader);
 
 /****************
  * Writing
@@ -218,6 +225,9 @@ ImErr im_write_finish(im_write *writer);
 
 /* Returns the current error state of the im_write object. */
 ImErr im_write_err(im_write *writer);
+
+/* */
+void im_write_kv(im_write *writer, const char *key, const char *value);
 
 /********
  * Filetype detection/guessing

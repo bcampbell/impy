@@ -7,7 +7,7 @@
 
 static bool png_match_cookie(const uint8_t* buf, int nbytes);
 static im_read* png_read_create(im_in *in, ImErr *err);
-static im_img* iread_png_image(im_in* in, ImErr *err);
+static im_img* iread_png_image(im_in* in, kvstore *kv, ImErr *err);
 static void info_callback(png_structp png_ptr, png_infop info_ptr);
 static void row_callback(png_structp png_ptr, png_bytep new_row, png_uint_32 row_num, int pass);
 static void end_callback(png_structp png_ptr, png_infop info);
@@ -45,7 +45,7 @@ struct cbdat {
     im_img* image;
 };
 
-static im_img* iread_png_image(im_in* in, ImErr *err)
+static im_img* iread_png_image(im_in* in, kvstore *kv, ImErr *err)
 {
     struct cbdat cbDat = {IM_ERR_NONE,0,NULL};
     png_structp png_ptr;
@@ -108,6 +108,19 @@ static im_img* iread_png_image(im_in* in, ImErr *err)
             return NULL;
         }
     }
+
+
+    // Add any text blocks we find to the kvstore.
+    {
+        png_textp txt;
+        int ntxt = 0;
+        int i;
+        png_get_text(png_ptr, info_ptr, &txt, &ntxt);
+        for (i = 0; i < ntxt; ++i) {
+            i_kvstore_add(kv, txt[i].key, txt[i].text);
+        }
+    }
+
 
     // success - clean up and exit
     png_destroy_read_struct(&png_ptr, &info_ptr, NULL);

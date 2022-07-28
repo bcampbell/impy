@@ -17,6 +17,8 @@ void i_write_init(im_write* writer)
     memset(writer, 0, sizeof(im_write));
     writer->err = IM_ERR_NONE;
     writer->state = WRITESTATE_READY;
+
+    i_kvstore_init(&writer->kv);
 }
 
 
@@ -60,6 +62,8 @@ ImErr im_write_finish(im_write* writer)
         ifree(writer->pal_data);
         writer->pal_data = NULL;
     }
+
+    i_kvstore_cleanup(&writer->kv);
 
     err = writer->err;
     ifree(writer);
@@ -241,5 +245,16 @@ void im_write_palette(im_write* wr, ImFmt pal_fmt, unsigned int num_colours, con
     wr->pal_data = irealloc(wr->pal_data, byte_cnt);
     cvt(colours, wr->pal_data, num_colours, 0, NULL);
     wr->pal_num_colours = num_colours;
+}
+
+
+void im_write_kv(im_write *wr, const char* key, const char* value)
+{
+    if (wr->err != IM_ERR_NONE) {
+        return;
+    }
+    if (!i_kvstore_add(&wr->kv, key, value)) {
+        wr->err = IM_ERR_NOMEM;
+    }
 }
 

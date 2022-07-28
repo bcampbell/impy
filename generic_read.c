@@ -12,12 +12,12 @@ typedef struct generic_reader {
 
     // type-specific fields from here on
     im_img* img;
-    im_img* (*load_single)(im_in *in, ImErr *err);
+    im_img* (*load_single)(im_in *in, kvstore *kv, ImErr *err);
 } generic_reader;
 
 //im_img* (load_single)(im_in *in, ImErr *err);
 
-im_read* i_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), i_read_handler* handler, im_in* in, ImErr* err )
+im_read* i_new_generic_reader(im_img* (*load_single)(im_in *, kvstore *, ImErr *), i_read_handler* handler, im_in* in, ImErr* err )
 {
     generic_reader *gr = imalloc(sizeof(generic_reader));
     if (!gr) {
@@ -49,7 +49,7 @@ bool i_generic_read_img(im_read* rdr)
         return false;
     }
     // Perform the load.
-    gr->img = gr->load_single(rdr->in, &rdr->err);
+    gr->img = gr->load_single(rdr->in, &rdr->kv, &rdr->err);
     if (!gr->img) {
         return false;
     }

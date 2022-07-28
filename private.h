@@ -19,6 +19,17 @@ typedef void (*im_convert_fn)( const uint8_t* src, uint8_t* dest, unsigned int w
 extern im_convert_fn i_pick_convert_fn(ImFmt srcFmt, ImFmt destFmt);
 
 
+// Growable set of key-value string pairs.
+typedef struct kvstore {
+    size_t num_entries;
+    im_kv* entries;
+    // growable buffer for the strings
+    char* buf;
+    size_t buf_size;
+    size_t buf_cap;
+} kvstore;
+
+
 /***********
  * write API support
  */
@@ -64,11 +75,20 @@ typedef struct im_write {
     // Always stored here in IM_FMT_RGBA format.
     unsigned int pal_num_colours;
     uint8_t* pal_data;
+
+    // Key/Value string pairs to write into image.
+    kvstore kv;
 } im_write;
+
 
 // im_write.c
 void i_write_init(im_write* writer);
 void i_write_set_internal_fmt(im_write* writer, ImFmt internal_fmt);
+
+// kv.c
+void i_kvstore_init(kvstore *store);
+void i_kvstore_cleanup(kvstore *store);
+bool i_kvstore_add(kvstore *store, const char* key, const char* value);
 
 /**********
  * read API support
@@ -106,6 +126,9 @@ typedef struct im_read {
     ImFmt external_fmt;
     uint8_t* rowbuf;
     im_convert_fn row_cvt_fn;
+
+    // Storage for any key-value metadata we need to collect.
+    kvstore kv;
 } im_read;
 
 // From im_read.c
@@ -115,7 +138,7 @@ void i_read_init(im_read* rdr);
 //extern im_read* i_new_gif_reader(im_in * in, ImErr *err);
 
 // From generic_read.c
-im_read* i_new_generic_reader(im_img* (*load_single)(im_in *, ImErr *), i_read_handler* handler, im_in* in, ImErr* err );
+im_read* i_new_generic_reader(im_img* (*load_single)(im_in *, kvstore *kv, ImErr *), i_read_handler* handler, im_in* in, ImErr* err );
 bool i_generic_read_img(im_read* rdr);
 void i_generic_read_rows(im_read *rdr, unsigned int num_rows, void* buf, int stride);
 void i_generic_read_finish(im_read* rdr);

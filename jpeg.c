@@ -9,7 +9,7 @@
 
 static bool jpeg_match_cookie(const uint8_t* buf, int nbytes);
 static im_read* jpeg_read_create(im_in *in, ImErr *err);
-static im_img* iread_jpeg_image(im_in* in, ImErr* err);
+static im_img* iread_jpeg_image(im_in* in, kvstore *kv, ImErr* err);
 
 i_read_handler i_jpeg_read_handler = {
     IM_FILETYPE_JPEG,
@@ -137,7 +137,7 @@ void my_error_exit(j_common_ptr cinfo)
 //------------------------------------------------------
 //
 
-static im_img* iread_jpeg_image(im_in* in, ImErr* err)
+static im_img* iread_jpeg_image(im_in* in, kvstore *kv, ImErr* err)
 {
     struct jpeg_decompress_struct cinfo;
     my_error_mgr jerr;
