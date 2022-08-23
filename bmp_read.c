@@ -194,7 +194,7 @@ static bool read_bitmap_header(bmp_state *bmp, im_in* in, ImErr* err)
     int compression=0, ncolours=0;
     uint8_t* p;
     uint32_t rmask=0,gmask=0,bmask=0,amask=0;
-    size_t imagesize;
+    size_t imagesize = 0;
 
     // read the dib header (variable size)
     if(im_in_read(in, buf, 4) != 4 ) {
