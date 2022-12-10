@@ -26,7 +26,7 @@ png_dep = dependency('libpng')
 gif_dep = [ cxx.find_library('gif') ]
 jpeg_dep = [ cxx.find_library('jpeg') ]
 
-impylib = library(
+impylib = static_library(
   meson.project_name(),
   srcs,
   dependencies: [png_dep, gif_dep, jpeg_dep,],
