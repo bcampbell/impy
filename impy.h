@@ -15,6 +15,11 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
+
+#define IMPY_VERSION_STRING "0.2"
+// Increment this any time API changes.
+#define IMPY_API_VERSION 2
+
 // The pixelformats we support.
 // X = pad byte
 // A = alpha byte

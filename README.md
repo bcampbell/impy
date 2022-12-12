@@ -50,5 +50,5 @@ To specify a release build in the meson setup step:
 
 ## API
 
-Not yet. `impy.h` is the public interface, but it's subject to massive change.
+See `impy.h`.
 
