@@ -149,7 +149,7 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
         }
     }
 
-    if (bitDepth<8) {
+    if (bitDepth < 8) {
         if (colourType==PNG_COLOR_TYPE_GRAY) {
             // scale up grayscale values
             png_set_expand_gray_1_2_4_to_8(png_ptr);
@@ -157,9 +157,14 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
             // unpack pixels into their own bytes (but keep original value)
     		png_set_packing(png_ptr);
         }
+    } else if (bitDepth == 16) {
+        // Scale down to 8 bits/channel.
+        png_set_scale_16(png_ptr);
+    } else if (bitDepth != 8) {
+        cbDat->err = IM_ERR_UNSUPPORTED;
+        png_error(png_ptr, "unsupported color type");
     }
 
-    // TODO: endianness for multi-byte channels? (png_set_swap())
     // TODO: gamma handling?
 
     //
@@ -183,15 +188,6 @@ static void info_callback(png_structp png_ptr, png_infop info_ptr)
                 png_error(png_ptr, "unsupported color type");
         }
 
-        if (bitDepth<=8 ) {
-            //
-        } else if (bitDepth==16) {
-            png_set_scale_16(png_ptr);
-        } else {
-            cbDat->err = IM_ERR_UNSUPPORTED;
-            png_error(png_ptr, "unsupported color type");
-        }
-        
         cbDat->image = im_img_new(width,height,1,fmt);
         if (cbDat->image == NULL) {
             cbDat->err = IM_ERR_NOMEM;
