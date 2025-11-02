@@ -42,7 +42,7 @@ Generic unix steps:
 
 To then install:
 
-    $ meson install
+    $ meson install -C build
 
 To specify a release build in the meson setup step:
 
